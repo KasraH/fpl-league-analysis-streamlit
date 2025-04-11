@@ -1,0 +1,25 @@
+# Virtual Environment
+venv/
+*.venv
+env/
+.env
+
+# Python cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# IDE/Editor directories
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Log files
+*.log
+
+# Streamlit secrets (if you ever use st.secrets)
+.streamlit/secrets.toml
