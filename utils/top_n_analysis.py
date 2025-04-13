@@ -5,7 +5,6 @@ from collections import Counter
 import streamlit as st  # Import streamlit for caching
 
 # --- Caching for Player Data ---
-# Cache this globally for the app session
 
 
 @st.cache_data(show_spinner=False)
@@ -67,6 +66,7 @@ def fetch_data_for_manager(manager_id, current_gw, _session):
 def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
     """
     Analyzes picks, transfers, and chip usage for the top N managers.
+    Correctly identifies Triple Captain picks.
 
     Args:
         df (pd.DataFrame): DataFrame containing league standings including 'entry' and 'rank'.
@@ -92,7 +92,8 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
     player_stats = {}  # Using dict for easier updates: {player_id: {counts}}
     chip_counts = {"wildcard": 0, "3xc": 0, "bboost": 0,
                    "freehit": 0}  # Standard chip names
-    manager_picks_counter = Counter()  # Placeholder if needed
+    # --- NEW: Counter specifically for Triple Captain picks ---
+    triple_captain_picks = Counter()
 
     # Fetch player data (uses caching)
     df_players = load_player_data(_session)
@@ -125,12 +126,15 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
             picks_data = data['picks']
             active_chip = picks_data.get("active_chip")  # Can be None
 
+            # Count chip usage
             if active_chip and active_chip in chip_counts:
                 chip_counts[active_chip] += 1
             elif active_chip:
                 print(
                     f"Warning: Unknown chip '{active_chip}' used by manager {manager_id}")
 
+            # Process individual picks for general stats and specific TC stats
+            captain_found_for_tc = False  # Flag for TC check
             for pick in picks_data.get("picks", []):
                 player_id = pick.get("element")
                 is_captain = pick.get("is_captain", False)
@@ -138,16 +142,21 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
 
                 if player_id not in player_stats:
                     player_stats[player_id] = {
-                        "captain_count": 0,
-                        "vice_captain_count": 0,
-                        "transfer_in_count": 0,  # Initialize transfer counts here
-                        "transfer_out_count": 0
+                        "captain_count": 0, "vice_captain_count": 0,
+                        "transfer_in_count": 0, "transfer_out_count": 0
                     }
 
+                # Increment general captain/vice-captain counts
                 if is_captain:
                     player_stats[player_id]["captain_count"] += 1
                 if is_vice_captain:
                     player_stats[player_id]["vice_captain_count"] += 1
+
+                # --- NEW: Check for Triple Captain ---
+                # If this manager used 3xc AND this pick is the captain
+                if active_chip == '3xc' and is_captain and not captain_found_for_tc:
+                    triple_captain_picks[player_id] += 1
+                    captain_found_for_tc = True  # Ensure we only count TC once per manager
 
         # Process transfers data
         # Check if transfers data exists
@@ -174,10 +183,11 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
 
     print("Creating results dataframes...")
     # --- Convert statistics to DataFrames ---
-    if not player_stats:  # Handle case where no player stats were collected
+    if not player_stats and not triple_captain_picks:  # Check both general stats and TC picks
         st.warning("No player statistics collected for the top N managers.")
         return (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), chip_counts, pd.DataFrame(), pd.DataFrame())
 
+    # --- General Stats DataFrame (Captains, Transfers) ---
     df_stats = pd.DataFrame.from_dict(player_stats, orient='index')
     df_stats.index.name = 'Player_ID'
     df_stats = df_stats.merge(
@@ -186,7 +196,7 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
     # Filter out players with no name (shouldn't happen if df_players loaded)
     df_stats = df_stats.dropna(subset=['web_name'])
 
-    # Captains (Top 10)
+    # Captains (Top 10 - All captains)
     df_captains = df_stats[df_stats["captain_count"] > 0].sort_values(
         by="captain_count", ascending=False).head(10)
     df_captains = df_captains[["web_name", "captain_count"]]
@@ -204,14 +214,20 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
     # Manager Picks (Placeholder - implement if needed)
     df_manager_picks_sorted = pd.DataFrame()
 
-    # Triple Captains
-    df_triple_captains = pd.DataFrame()  # Default to empty
-    if chip_counts.get("3xc", 0) > 0 and "captain_count" in df_stats.columns:
-        df_tc_candidates = df_stats[df_stats["captain_count"] > 0].copy()
-        df_tc_candidates.rename(
-            columns={"captain_count": "triple_captain_count"}, inplace=True)
-        df_triple_captains = df_tc_candidates[["web_name", "triple_captain_count"]].sort_values(
-            by="triple_captain_count", ascending=False)
+    # --- Triple Captains DataFrame (from specific counter) ---
+    df_triple_captains = pd.DataFrame()  # Default empty
+    if triple_captain_picks:  # Check if the counter has any entries
+        # Convert the Counter to a DataFrame
+        df_tc = pd.DataFrame(triple_captain_picks.items(), columns=[
+                             'Player_ID', 'triple_captain_count'])
+        # Merge with player names
+        df_tc = df_tc.merge(df_players, left_on='Player_ID',
+                            right_on='id', how='left')
+        # Select columns and sort
+        df_triple_captains = df_tc[['web_name', 'triple_captain_count']].sort_values(
+            by='triple_captain_count', ascending=False)
+        # Drop rows where merge might have failed (though unlikely if df_players is good)
+        df_triple_captains = df_triple_captains.dropna(subset=['web_name'])
 
     print("Top N analysis complete.")
     return df_captains, df_transfers_in, df_transfers_out, chip_counts, df_manager_picks_sorted, df_triple_captains
