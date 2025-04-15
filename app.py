@@ -149,7 +149,7 @@ if st.sidebar.button("Run Analysis"):
     st.subheader("Overall Standings")  # Title changed slightly
     # Define base columns
     display_cols_main = [
-        'rank', 'player_name', 'entry_name', 'event_total',
+        'rank', 'player_name', 'entry_name', 'entry', 'event_total',
         'overall_rank', 'rank_change', 'pct_rank_change', 'total'
     ]
     # Add adjusted column only if calculated
@@ -160,6 +160,11 @@ if st.sidebar.button("Run Analysis"):
 
     display_cols_main = [col for col in display_cols_main if col in df.columns]
     df_display = df[display_cols_main].copy()
+
+    # Rename 'entry' column to 'id'
+    if 'entry' in df_display.columns:
+        df_display = df_display.rename(columns={'entry': 'id'})
+
     if 'rank' in df_display.columns:
         df_display.set_index('rank', inplace=True)
         df_display.index.name = None
@@ -173,58 +178,72 @@ if st.sidebar.button("Run Analysis"):
         if "event_total" in df.columns:
             top_points_week = df.loc[df["event_total"]
                                      == df["event_total"].max()]
-            display_df("🏆 Top Points (Raw)", top_points_week[[
-                       'player_name', 'entry_name', 'event_total']])
+            display_cols = ['player_name',
+                            'entry_name', 'entry', 'event_total']
+            top_points_week = top_points_week[display_cols].rename(columns={
+                                                                   'entry': 'id'})
+            display_df("🏆 Top Points (Raw)", top_points_week)
 
-        # --- Conditional Display ---
         if adjusted_points_calculated and "adjusted_event_total" in df.columns:
-            # Check for NA before finding max if calculation was skipped but column exists
             adj_points_valid = df["adjusted_event_total"].dropna()
             if not adj_points_valid.empty:
                 top_points_week_without_chips = df.loc[df["adjusted_event_total"] == adj_points_valid.max(
                 )]
-                display_df("🏆 Top Points (Adjusted)", top_points_week_without_chips[[
-                           'player_name', 'entry_name', 'adjusted_event_total']])
+                display_cols = ['player_name', 'entry_name',
+                                'entry', 'adjusted_event_total']
+                top_points_week_without_chips = top_points_week_without_chips[display_cols].rename(
+                    columns={'entry': 'id'})
+                display_df("🏆 Top Points (Adjusted)",
+                           top_points_week_without_chips)
             else:
-                # Or pass empty df to display_df
                 st.info("Adjusted points not calculated or available.")
 
-        # Most improved rank (absolute) - No change needed
         if "rank_change" in df.columns:
             valid_rank_change = df["rank_change"].dropna()
             if not valid_rank_change.empty:
                 most_improved = df.loc[df["rank_change"]
                                        == valid_rank_change.max()]
-                display_df("📈 Most Improved Rank", most_improved[[
-                           'player_name', 'entry_name', 'rank_change', 'rank']])
+                display_cols = ['player_name', 'entry_name',
+                                'entry', 'rank_change', 'rank']
+                most_improved = most_improved[display_cols].rename(
+                    columns={'entry': 'id'})
+                display_df("📈 Most Improved Rank", most_improved)
             else:
                 display_df("📈 Most Improved Rank", pd.DataFrame())
 
     with col2:
-        # Biggest rank drop (absolute) - No change needed
+        # Biggest rank drop (absolute)
         if "rank_change" in df.columns:
             valid_rank_change = df["rank_change"].dropna()
             if not valid_rank_change.empty:
                 most_dropped = df.loc[df["rank_change"]
                                       == valid_rank_change.min()]
-                display_df("📉 Biggest Rank Drop", most_dropped[[
-                           'player_name', 'entry_name', 'rank_change', 'rank']])
+                display_cols = ['player_name', 'entry_name',
+                                'entry', 'rank_change', 'rank']
+                most_dropped = most_dropped[display_cols].rename(
+                    columns={'entry': 'id'})
+                display_df("📉 Biggest Rank Drop", most_dropped)
             else:
                 display_df("📉 Biggest Rank Drop", pd.DataFrame())
 
-        # Rank changes by percentage - No change needed
+        # Rank changes by percentage
         if "pct_rank_change" in df.columns:
             valid_pct_change = df["pct_rank_change"].dropna().replace(
                 [float('inf'), -float('inf')], None).dropna()
             if not valid_pct_change.empty:
                 most_improved_pct = df.loc[df["pct_rank_change"]
                                            == valid_pct_change.max()]
-                display_df("📈 Most Improved Rank (%)", most_improved_pct[[
-                           'player_name', 'entry_name', 'pct_rank_change', 'rank']])
+                display_cols = ['player_name', 'entry_name',
+                                'entry', 'pct_rank_change', 'rank']
+                most_improved_pct = most_improved_pct[display_cols].rename(columns={
+                                                                           'entry': 'id'})
+                display_df("📈 Most Improved Rank (%)", most_improved_pct)
+
                 most_dropped_pct = df.loc[df["pct_rank_change"]
                                           == valid_pct_change.min()]
-                display_df("📉 Biggest Rank Drop (%)", most_dropped_pct[[
-                           'player_name', 'entry_name', 'pct_rank_change', 'rank']])
+                most_dropped_pct = most_dropped_pct[display_cols].rename(columns={
+                                                                         'entry': 'id'})
+                display_df("📉 Biggest Rank Drop (%)", most_dropped_pct)
             else:
                 display_df("📈 Most Improved Rank (%)", pd.DataFrame())
                 display_df("📉 Biggest Rank Drop (%)", pd.DataFrame())
