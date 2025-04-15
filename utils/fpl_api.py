@@ -141,7 +141,7 @@ def process_page_data(page_data, max_workers=10):
     return players_data_list, has_next
 
 
-def get_league_standings(league_id, max_workers_overall_rank=10, limit=None):
+def get_league_standings(league_id, max_workers_overall_rank=10, limit=None, progress_text=None):
     """
     Fetch league standings and return a DataFrame.
     Uses parallel fetching for overall ranks within each page.
@@ -149,13 +149,14 @@ def get_league_standings(league_id, max_workers_overall_rank=10, limit=None):
     Args:
         league_id: The ID of the league to fetch
         max_workers_overall_rank: Maximum number of workers for parallel overall rank fetching
-        limit: Optional limit on number of managers to fetch. If provided, only fetches
-              enough pages to get this many managers (50 managers per page)
+        limit: Optional limit on number of managers to fetch
+        progress_text: Optional streamlit text element for progress updates
     """
     all_players = []
     page = 1
     has_next = True
     managers_per_page = 50  # FPL API returns 50 managers per page
+    total_fetched = 0
 
     # Calculate how many pages we need if limit is provided
     max_pages = None
@@ -165,6 +166,10 @@ def get_league_standings(league_id, max_workers_overall_rank=10, limit=None):
     print(f"Fetching league {league_id} standings...")
     with tqdm(desc="Fetching pages", unit="page") as pbar:
         while has_next:
+            if progress_text:
+                progress_text.text(
+                    f"Fetching league data... {total_fetched} managers retrieved")
+
             page_data = fetch_league_page(league_id, page)
 
             if page_data is None:
@@ -175,13 +180,14 @@ def get_league_standings(league_id, max_workers_overall_rank=10, limit=None):
             players, current_has_next = process_page_data(
                 page_data, max_workers=max_workers_overall_rank)
             all_players.extend(players)
+            total_fetched = len(all_players)
             has_next = current_has_next
 
             pbar.update(1)
-            pbar.set_description(f"Fetched {len(all_players)} players")
+            pbar.set_description(f"Fetched {total_fetched} managers")
 
             # Stop if we've reached the limit
-            if limit and len(all_players) >= limit:
+            if limit and total_fetched >= limit:
                 all_players = all_players[:limit]  # Trim to exact limit
                 break
 
@@ -197,6 +203,9 @@ def get_league_standings(league_id, max_workers_overall_rank=10, limit=None):
     if not all_players:
         print("No players found for this league.")
         return pd.DataFrame()
+
+    if progress_text:
+        progress_text.text(f"Processing data for {total_fetched} managers...")
 
     # Create DataFrame from the collected list of dictionaries
     df = pd.DataFrame(all_players)

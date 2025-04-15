@@ -63,7 +63,7 @@ def fetch_data_for_manager(manager_id, current_gw, _session):
 # --- Main Analysis Function ---
 
 
-def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
+def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20, progress_text=None):
     """
     Analyzes picks, transfers, and chip usage for the top N managers.
     Correctly identifies Triple Captain picks.
@@ -74,6 +74,7 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
         current_gw (int): The gameweek to analyze.
         _session (requests.Session): The requests session object.
         max_workers (int): Max workers for ThreadPoolExecutor.
+        progress_text: Optional streamlit text element for progress updates.
 
     Returns:
         tuple: Contains DataFrames/dict for captains, transfers in/out, chips, manager picks, triple captains.
@@ -88,15 +89,20 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
     df_top_players = df.nsmallest(actual_n, "rank")
     manager_ids = df_top_players["entry"].tolist()
 
+    if progress_text:
+        progress_text.text(f"Analyzing data for top {actual_n} managers...")
+
     # Initialize data structures
-    player_stats = {}  # Using dict for easier updates: {player_id: {counts}}
+    player_stats = {}
     chip_counts = {"wildcard": 0, "3xc": 0, "bboost": 0,
-                   "freehit": 0, "manager": 0}  # Added manager chip
-    # --- Counter for Triple Captain and Manager picks ---
+                   "freehit": 0, "manager": 0}
     triple_captain_picks = Counter()
-    manager_picks = Counter()  # NEW: Counter for manager picks
+    manager_picks = Counter()
 
     # Fetch player data (uses caching)
+    if progress_text:
+        progress_text.text("Loading player data...")
+
     df_players = load_player_data(_session)
     if df_players.empty:
         st.error("Could not load player names, aborting detailed analysis.")
@@ -104,7 +110,10 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
 
     # --- Parallel fetch data for all managers ---
     manager_data = {}
-    print(f"Fetching detailed data for top {actual_n} managers...")
+
+    if progress_text:
+        progress_text.text(f"Fetching data for top {actual_n} managers...")
+
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         future_to_manager = {
             executor.submit(fetch_data_for_manager, manager_id, current_gw, _session): manager_id
@@ -112,13 +121,21 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
         }
 
         # Process results as they complete
-        for i, future in enumerate(concurrent.futures.as_completed(future_to_manager)):
+        completed = 0
+        for future in concurrent.futures.as_completed(future_to_manager):
             manager_id, results = future.result()
-            if results:  # Only store if we got some data back
+            if results:
                 manager_data[manager_id] = results
-            # Optionally update a progress bar here if passed from app.py
 
-    print(f"Processing collected data for {len(manager_data)} managers...")
+            completed += 1
+            if progress_text and completed % 5 == 0:  # Update every 5 managers
+                progress_text.text(
+                    f"Fetched data for {completed}/{actual_n} managers...")
+
+    if progress_text:
+        progress_text.text(
+            f"Processing collected data for {len(manager_data)} managers...")
+
     # --- Process all the collected data ---
     for manager_id, data in manager_data.items():
         # Process picks data

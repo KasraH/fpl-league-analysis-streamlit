@@ -64,7 +64,8 @@ if st.sidebar.button("Run Analysis"):
         # Only fetch required number of managers if user doesn't need full table
         fetch_limit = None if calculate_all_adjusted else top_n
         with st.spinner("Fetching league standings..."):
-            df = get_league_standings(league_id, limit=fetch_limit)
+            df = get_league_standings(
+                league_id, limit=fetch_limit, progress_text=progress_text)
 
         if df.empty:
             st.error(
@@ -80,7 +81,7 @@ if st.sidebar.button("Run Analysis"):
             next_progress, text=f"Analyzing top {actual_n} managers...")
         with st.spinner(f"Running detailed analysis for Top {actual_n} managers..."):
             analysis_results = analyze_top_n_managers(
-                df, top_n, current_gw, session)
+                df, top_n, current_gw, session, progress_text=progress_text)
 
         # --- Stage 3: Calculate Adjusted Points (Optional) ---
         if calculate_all_adjusted:
