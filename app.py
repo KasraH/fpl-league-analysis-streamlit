@@ -18,10 +18,16 @@ top_n = st.sidebar.number_input(
     "Number of top managers (N) for detailed analysis:",
     min_value=1, value=10, max_value=200, step=1
 )
-# --- NEW: Checkbox for optional calculation ---
-calculate_all_adjusted = st.sidebar.checkbox(
-    # Default to True
-    "Calculate Adjusted Points for Entire League (Slower)", value=True)
+# --- Analysis Mode Selection ---
+analysis_mode = st.sidebar.radio(
+    "Analysis Mode:",
+    ["Quick Analysis (Top Managers Only)", "Full League Analysis"],
+    help="""
+    Quick Analysis: Only analyzes the top N managers. Best for quick insights into top performers.
+    Full League Analysis: Analyzes all managers including chip-adjusted points. Takes longer but provides complete league overview.
+    """
+)
+calculate_all_adjusted = analysis_mode == "Full League Analysis"
 
 # --- Helper function to display DataFrames nicely ---
 
@@ -54,8 +60,11 @@ if st.sidebar.button("Run Analysis"):
         # --- Stage 1: Fetch League Standings ---
         progress_text.text("Fetching league standings...")
         progress_bar.progress(10, text="Fetching league standings...")
+
+        # Only fetch required number of managers if user doesn't need full table
+        fetch_limit = None if calculate_all_adjusted else top_n
         with st.spinner("Fetching league standings..."):
-            df = get_league_standings(league_id)
+            df = get_league_standings(league_id, limit=fetch_limit)
 
         if df.empty:
             st.error(

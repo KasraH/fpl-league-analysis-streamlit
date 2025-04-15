@@ -141,54 +141,67 @@ def process_page_data(page_data, max_workers=10):
     return players_data_list, has_next
 
 
-def get_league_standings(league_id, max_workers_overall_rank=10):
+def get_league_standings(league_id, max_workers_overall_rank=10, limit=None):
     """
-    Fetch all pages of league standings and return a DataFrame.
+    Fetch league standings and return a DataFrame.
     Uses parallel fetching for overall ranks within each page.
+
+    Args:
+        league_id: The ID of the league to fetch
+        max_workers_overall_rank: Maximum number of workers for parallel overall rank fetching
+        limit: Optional limit on number of managers to fetch. If provided, only fetches
+              enough pages to get this many managers (50 managers per page)
     """
     all_players = []
     page = 1
     has_next = True
+    managers_per_page = 50  # FPL API returns 50 managers per page
+
+    # Calculate how many pages we need if limit is provided
+    max_pages = None
+    if limit:
+        max_pages = (limit + managers_per_page - 1) // managers_per_page
 
     print(f"Fetching league {league_id} standings...")
-    # Use tqdm for terminal progress if running outside Streamlit or for debugging
     with tqdm(desc="Fetching pages", unit="page") as pbar:
         while has_next:
-            # print(f"Fetching page {page}...") # Optional detailed logging
             page_data = fetch_league_page(league_id, page)
 
             if page_data is None:
-                # Attempt to fetch next page failed, stop.
                 print(f"Warning: Failed to fetch page {page}. Stopping.")
-                has_next = False  # Ensure loop terminates
+                has_next = False
                 break
 
-            # Process the data from the fetched page
             players, current_has_next = process_page_data(
                 page_data, max_workers=max_workers_overall_rank)
             all_players.extend(players)
-            has_next = current_has_next  # Update has_next based on the latest page
+            has_next = current_has_next
 
             pbar.update(1)
             pbar.set_description(f"Fetched {len(all_players)} players")
 
+            # Stop if we've reached the limit
+            if limit and len(all_players) >= limit:
+                all_players = all_players[:limit]  # Trim to exact limit
+                break
+
+            # Stop if we've fetched all needed pages
+            if max_pages and page >= max_pages:
+                break
+
             if not has_next:
-                # print("No more pages found.")
                 break
 
             page += 1
-            # Optional: Add a small delay to avoid hitting rate limits if necessary
-            # time.sleep(0.1)
 
     if not all_players:
         print("No players found for this league.")
-        return pd.DataFrame()  # Return empty DataFrame
+        return pd.DataFrame()
 
     # Create DataFrame from the collected list of dictionaries
     df = pd.DataFrame(all_players)
 
     # Convert types after collecting all data for efficiency
-    # Use Int64 (capital I) to handle potential missing values (pd.NA)
     df["rank"] = pd.to_numeric(df["rank"], errors='coerce').astype("Int64")
     df["last_rank"] = pd.to_numeric(
         df["last_rank"], errors='coerce').astype("Int64")
@@ -201,7 +214,7 @@ def get_league_standings(league_id, max_workers_overall_rank=10):
     df["overall_rank"] = pd.to_numeric(
         df["overall_rank"], errors='coerce').astype("Int64")
     df["pct_rank_change"] = pd.to_numeric(
-        df["pct_rank_change"], errors='coerce').round(2)  # Float is fine here
+        df["pct_rank_change"], errors='coerce').round(2)
 
     print(f"Total players retrieved and processed: {len(df)}")
     return df
