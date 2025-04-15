@@ -4,7 +4,7 @@ A Streamlit application designed to analyze Fantasy Premier League (FPL) mini-le
 
 ## Features
 
-- **Adjusted Gameweek Points:** Calculates each manager's gameweek score excluding points gained from chips (Bench Boost, Triple Captain). Transfer costs are also factored in.
+- **Adjusted Gameweek Points:** Calculates each manager's gameweek score excluding points gained from chips (Bench Boost, Triple Captain, Manager). Transfer costs are also factored in.
 - **Overall Rank Display:** Fetches and displays the current overall FPL rank for each manager in the league.
 - **League Standings:** Shows the classic league standings table with raw and adjusted points, rank changes, and overall rank.
 - **General League Statistics:** Displays key stats for the gameweek, including:
@@ -15,15 +15,12 @@ A Streamlit application designed to analyze Fantasy Premier League (FPL) mini-le
 - **Top N Manager Analysis:** Provides detailed insights into the top N managers (configurable) for the selected gameweek:
   - Average raw and adjusted points.
   - Average overall rank.
-  - Chip usage breakdown (Wildcard, Free Hit, Bench Boost, Triple Captain).
+  - Chip usage breakdown.
   - Most captained players.
   - Most triple-captained players (if applicable).
   - Most transferred-in players.
   - Most transferred-out players.
 
-## Demo
-
-_[Link to your deployed Streamlit app will go here once deployed]_
 
 ## Setup (Local Development)
 
