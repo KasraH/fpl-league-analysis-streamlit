@@ -82,6 +82,14 @@ def get_manager_gw_points(manager_id, gw, _session):  # Accept session
                 chip_point_effect += get_player_points(
                     pick['element'], gw, _session)
                 break  # Only one captain
+    elif active_chip == "manager":
+        # Handle manager chip - find player in position 16 (the manager position)
+        for pick in picks:
+            if pick.get("position") == 16:
+                # Get the manager's points
+                chip_point_effect += get_player_points(
+                    pick['element'], gw, _session)
+                break  # Only one manager
 
     # Adjusted points = Raw Points - Transfer Costs - Chip Point Effect
     adjusted_points = points - transfers_cost - chip_point_effect

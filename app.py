@@ -123,9 +123,12 @@ if st.sidebar.button("Run Analysis"):
                     st.info("No chips were used by the top N managers.")
             else:
                 st.info("No chips were used by the top N managers.")
+
             display_df("Top Captain Picks", df_captains)
             if chip_counts.get("3xc", 0) > 0:
                 display_df("Triple Captain Picks", df_triple_captains)
+            if chip_counts.get("manager", 0) > 0:
+                display_df("Manager Chip Selections", df_manager_picks)
         with col_detail2:
             display_df("Top Transfers In", df_transfers_in)
             display_df("Top Transfers Out", df_transfers_out)

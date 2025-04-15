@@ -91,9 +91,10 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
     # Initialize data structures
     player_stats = {}  # Using dict for easier updates: {player_id: {counts}}
     chip_counts = {"wildcard": 0, "3xc": 0, "bboost": 0,
-                   "freehit": 0}  # Standard chip names
-    # --- NEW: Counter specifically for Triple Captain picks ---
+                   "freehit": 0, "manager": 0}  # Added manager chip
+    # --- Counter for Triple Captain and Manager picks ---
     triple_captain_picks = Counter()
+    manager_picks = Counter()  # NEW: Counter for manager picks
 
     # Fetch player data (uses caching)
     df_players = load_player_data(_session)
@@ -133,10 +134,12 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
                 print(
                     f"Warning: Unknown chip '{active_chip}' used by manager {manager_id}")
 
-            # Process individual picks for general stats and specific TC stats
+            # Process individual picks for general stats and specific chip stats
             captain_found_for_tc = False  # Flag for TC check
+            manager_found = False  # Flag for manager chip
             for pick in picks_data.get("picks", []):
                 player_id = pick.get("element")
+                position = pick.get("position")
                 is_captain = pick.get("is_captain", False)
                 is_vice_captain = pick.get("is_vice_captain", False)
 
@@ -152,11 +155,15 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
                 if is_vice_captain:
                     player_stats[player_id]["vice_captain_count"] += 1
 
-                # --- NEW: Check for Triple Captain ---
-                # If this manager used 3xc AND this pick is the captain
+                # Check for Triple Captain
                 if active_chip == '3xc' and is_captain and not captain_found_for_tc:
                     triple_captain_picks[player_id] += 1
-                    captain_found_for_tc = True  # Ensure we only count TC once per manager
+                    captain_found_for_tc = True
+
+                # Check for Manager Chip selection (position 16)
+                if active_chip == 'manager' and position == 16 and not manager_found:
+                    manager_picks[player_id] += 1
+                    manager_found = True
 
         # Process transfers data
         # Check if transfers data exists
@@ -211,8 +218,20 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
         by="transfer_out_count", ascending=False).head(10)
     df_transfers_out = df_transfers_out[["web_name", "transfer_out_count"]]
 
-    # Manager Picks (Placeholder - implement if needed)
-    df_manager_picks_sorted = pd.DataFrame()
+    # --- Manager Picks DataFrame ---
+    df_manager_picks = pd.DataFrame()  # Default empty
+    if manager_picks:  # Check if the counter has any entries
+        # Convert the Counter to a DataFrame
+        df_mp = pd.DataFrame(manager_picks.items(), columns=[
+                             'Player_ID', 'manager_pick_count'])
+        # Merge with player names
+        df_mp = df_mp.merge(df_players, left_on='Player_ID',
+                            right_on='id', how='left')
+        # Select columns and sort
+        df_manager_picks = df_mp[['web_name', 'manager_pick_count']].sort_values(
+            by='manager_pick_count', ascending=False)
+        # Drop rows where merge might have failed
+        df_manager_picks = df_manager_picks.dropna(subset=['web_name'])
 
     # --- Triple Captains DataFrame (from specific counter) ---
     df_triple_captains = pd.DataFrame()  # Default empty
@@ -230,4 +249,4 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20):
         df_triple_captains = df_triple_captains.dropna(subset=['web_name'])
 
     print("Top N analysis complete.")
-    return df_captains, df_transfers_in, df_transfers_out, chip_counts, df_manager_picks_sorted, df_triple_captains
+    return df_captains, df_transfers_in, df_transfers_out, chip_counts, df_manager_picks, df_triple_captains
