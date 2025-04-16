@@ -141,13 +141,105 @@ def process_page_data(page_data, max_workers=10):
     return players_data_list, has_next
 
 
-def get_league_standings(league_id, max_workers_overall_rank=10, limit=None, progress_text=None):
+def get_manager_history(entry, current_gw):
+    """
+    Fetch manager's gameweek history including overall rank for current and previous GWs.
+    Used to calculate overall rank change.
+    """
+    # Check cache first (we could add this for optimization)
+    url = f"https://fantasy.premierleague.com/api/entry/{entry}/history/"
+    try:
+        # Use the shared session
+        response = session.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            current_data = data.get("current", [])
+
+            # Get current GW's overall rank
+            current_gw_data = None
+            prev_gw_data = None
+
+            # Find current GW data
+            for gw_data in current_data:
+                if gw_data.get("event") == current_gw:
+                    current_gw_data = gw_data
+                elif gw_data.get("event") == current_gw - 1:
+                    prev_gw_data = gw_data
+
+            # Return both current and previous GW data
+            return {
+                "current": current_gw_data,
+                "previous": prev_gw_data
+            }
+        else:
+            print(
+                f"Error: Failed to fetch history for entry {entry}. Status code: {response.status_code}")
+            return None
+    except requests.exceptions.RequestException as e:
+        print(f"Request error for history data entry {entry}: {e}")
+        return None
+
+
+def calculate_overall_rank_changes(players_data, current_gw):
+    """
+    Calculate overall rank changes for each player by fetching history data.
+
+    Args:
+        players_data (list): List of player data dictionaries
+        current_gw (int): The current gameweek being analyzed
+
+    Returns:
+        dict: Dictionary mapping entry IDs to their overall rank changes
+    """
+    rank_changes = {}
+
+    # Use ThreadPoolExecutor for parallel fetching
+    with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+        # Create a mapping of future to entry_id
+        future_to_entry = {
+            executor.submit(get_manager_history, player["entry"], current_gw): player["entry"]
+            for player in players_data
+        }
+
+        for future in concurrent.futures.as_completed(future_to_entry):
+            entry_id = future_to_entry[future]
+            try:
+                history_data = future.result()
+                if history_data and history_data["current"] and history_data["previous"]:
+                    current_rank = history_data["current"].get("overall_rank")
+                    prev_rank = history_data["previous"].get("overall_rank")
+
+                    if current_rank is not None and prev_rank is not None:
+                        # Calculate rank change (positive means improvement)
+                        rank_change = prev_rank - current_rank
+
+                        # Calculate percentage change (avoid division by zero)
+                        if prev_rank > 0:
+                            pct_change = (rank_change / prev_rank) * 100
+                        else:
+                            pct_change = None
+
+                        rank_changes[entry_id] = {
+                            "current_rank": current_rank,
+                            "prev_rank": prev_rank,
+                            "rank_change": rank_change,
+                            "pct_change": pct_change
+                        }
+            except Exception as exc:
+                print(
+                    f'Error calculating rank change for entry {entry_id}: {exc}')
+
+    return rank_changes
+
+
+def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10, limit=None, progress_text=None):
     """
     Fetch league standings and return a DataFrame.
     Uses parallel fetching for overall ranks within each page.
 
     Args:
         league_id: The ID of the league to fetch
+        current_gw: Current gameweek (needed for overall rank change calculations)
         max_workers_overall_rank: Maximum number of workers for parallel overall rank fetching
         limit: Optional limit on number of managers to fetch
         progress_text: Optional streamlit text element for progress updates
@@ -204,6 +296,27 @@ def get_league_standings(league_id, max_workers_overall_rank=10, limit=None, pro
         print("No players found for this league.")
         return pd.DataFrame()
 
+    # Get overall rank change data if current_gw is provided
+    if current_gw and current_gw > 1:
+        if progress_text:
+            progress_text.text(
+                f"Fetching overall rank change data for {total_fetched} managers...")
+
+        # Calculate overall rank changes
+        overall_rank_changes = calculate_overall_rank_changes(
+            all_players, current_gw)
+
+        # Add overall rank change data to player data
+        for player in all_players:
+            entry_id = player.get("entry")
+            if entry_id in overall_rank_changes:
+                change_data = overall_rank_changes[entry_id]
+                # Update with precise data from history
+                player["overall_rank"] = change_data["current_rank"]
+                player["prev_overall_rank"] = change_data["prev_rank"]
+                player["overall_rank_change"] = change_data["rank_change"]
+                player["overall_rank_change_pct"] = change_data["pct_change"]
+
     if progress_text:
         progress_text.text(f"Processing data for {total_fetched} managers...")
 
@@ -224,6 +337,17 @@ def get_league_standings(league_id, max_workers_overall_rank=10, limit=None, pro
         df["overall_rank"], errors='coerce').astype("Int64")
     df["pct_rank_change"] = pd.to_numeric(
         df["pct_rank_change"], errors='coerce').round(2)
+
+    # Convert overall rank change columns if they exist
+    if "prev_overall_rank" in df.columns:
+        df["prev_overall_rank"] = pd.to_numeric(
+            df["prev_overall_rank"], errors='coerce').astype("Int64")
+    if "overall_rank_change" in df.columns:
+        df["overall_rank_change"] = pd.to_numeric(
+            df["overall_rank_change"], errors='coerce').astype("Int64")
+    if "overall_rank_change_pct" in df.columns:
+        df["overall_rank_change_pct"] = pd.to_numeric(
+            df["overall_rank_change_pct"], errors='coerce').round(2)
 
     print(f"Total players retrieved and processed: {len(df)}")
     return df

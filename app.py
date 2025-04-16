@@ -65,7 +65,7 @@ if st.sidebar.button("Run Analysis"):
         fetch_limit = None if calculate_all_adjusted else top_n
         with st.spinner("Fetching league standings..."):
             df = get_league_standings(
-                league_id, limit=fetch_limit, progress_text=progress_text)
+                league_id, current_gw=current_gw, limit=fetch_limit, progress_text=progress_text)
 
         if df.empty:
             st.error(
@@ -151,7 +151,8 @@ if st.sidebar.button("Run Analysis"):
     # Define base columns
     display_cols_main = [
         'rank', 'player_name', 'entry_name', 'entry', 'event_total',
-        'overall_rank', 'rank_change', 'pct_rank_change', 'total'
+        'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
+        'rank_change', 'pct_rank_change', 'total'
     ]
     # Add adjusted column only if calculated
     if adjusted_points_calculated and 'adjusted_event_total' in df.columns:
@@ -248,6 +249,63 @@ if st.sidebar.button("Run Analysis"):
             else:
                 display_df("📈 Most Improved Rank (%)", pd.DataFrame())
                 display_df("📉 Biggest Rank Drop (%)", pd.DataFrame())
+
+    # Display Overall Rank Change Statistics
+    st.markdown("---")
+    st.subheader(f"Overall Rank Change Statistics (GW {current_gw})")
+    col1, col2 = st.columns(2)
+    with col1:
+        # Most improved overall rank
+        if "overall_rank_change" in df.columns:
+            valid_rank_change = df["overall_rank_change"].dropna()
+            if not valid_rank_change.empty:
+                most_improved = df.loc[df["overall_rank_change"]
+                                       == valid_rank_change.max()]
+                display_cols = ['player_name', 'entry_name', 'entry',
+                                'overall_rank', 'prev_overall_rank', 'overall_rank_change']
+                most_improved = most_improved[display_cols].rename(
+                    columns={'entry': 'id'})
+                display_df("📈 Most Improved Overall Rank", most_improved)
+            else:
+                st.info("Overall rank change data not available.")
+        else:
+            st.info("Overall rank change data not available.")
+
+    with col2:
+        # Biggest overall rank drop
+        if "overall_rank_change" in df.columns:
+            valid_rank_change = df["overall_rank_change"].dropna()
+            if not valid_rank_change.empty:
+                most_dropped = df.loc[df["overall_rank_change"]
+                                      == valid_rank_change.min()]
+                display_cols = ['player_name', 'entry_name', 'entry',
+                                'overall_rank', 'prev_overall_rank', 'overall_rank_change']
+                most_dropped = most_dropped[display_cols].rename(
+                    columns={'entry': 'id'})
+                display_df("📉 Biggest Overall Rank Drop", most_dropped)
+
+        # Overall Rank changes by percentage
+        if "overall_rank_change_pct" in df.columns:
+            valid_pct_change = df["overall_rank_change_pct"].dropna().replace(
+                [float('inf'), -float('inf')], None).dropna()
+            if not valid_pct_change.empty:
+                most_improved_pct = df.loc[df["overall_rank_change_pct"]
+                                           == valid_pct_change.max()]
+                display_cols = ['player_name', 'entry_name', 'entry',
+                                'overall_rank', 'prev_overall_rank', 'overall_rank_change_pct']
+                most_improved_pct = most_improved_pct[display_cols].rename(columns={
+                                                                           'entry': 'id'})
+                display_df("📈 Most Improved Overall Rank (%)",
+                           most_improved_pct)
+
+                # Show biggest overall rank drop by percentage
+                most_dropped_pct = df.loc[df["overall_rank_change_pct"]
+                                          == valid_pct_change.min()]
+                display_cols = ['player_name', 'entry_name', 'entry',
+                                'overall_rank', 'prev_overall_rank', 'overall_rank_change_pct']
+                most_dropped_pct = most_dropped_pct[display_cols].rename(columns={
+                                                                         'entry': 'id'})
+                display_df("📉 Biggest Overall Rank Drop (%)", most_dropped_pct)
 
     # Display Top N Average Stats (Conditionally include adjusted avg)
     st.markdown("---")
