@@ -65,9 +65,14 @@ def fetch_league_page(league_id, page):
         return None
 
 
-def process_page_data(page_data, max_workers=10):
+def process_page_data(page_data, current_gw=None, max_workers=10):
     """
     Process data from a single page: extract player info and fetch overall ranks in parallel.
+
+    Args:
+        page_data: The JSON data for a single page of league standings
+        current_gw: Current gameweek number (needed for rank changes)
+        max_workers: Max workers for parallel processing
     """
     players_data_list = []
     if not page_data or "standings" not in page_data:
@@ -82,31 +87,42 @@ def process_page_data(page_data, max_workers=10):
         # It's possible to have standings but no results on an empty page
         return players_data_list, has_next
 
-    # --- Fetch overall ranks in parallel ---
+    # --- Fetch manager data in parallel (history contains overall ranks) ---
     entry_ids = [player["entry"] for player in results]
-    overall_ranks = {}  # Dictionary to store results: {entry_id: rank}
+    manager_data = {}  # Dictionary to store results: {entry_id: data}
 
     # Use ThreadPoolExecutor for I/O-bound tasks (API calls)
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-        # Create a mapping of future to entry_id
-        future_to_entry = {
-            executor.submit(get_overall_rank, entry_id): entry_id
-            for entry_id in entry_ids
-        }
+        # Create futures that fetch both overall rank and history in one call
+        future_to_entry = {}
+
+        # Only fetch history if we need rank changes (current_gw is provided)
+        if current_gw and current_gw > 1:
+            future_to_entry = {
+                executor.submit(get_manager_history, entry_id, current_gw): entry_id
+                for entry_id in entry_ids
+            }
+        else:
+            # Otherwise just get basic data with overall rank
+            future_to_entry = {
+                executor.submit(get_overall_rank, entry_id): entry_id
+                for entry_id in entry_ids
+            }
 
         for future in concurrent.futures.as_completed(future_to_entry):
             entry_id = future_to_entry[future]
             try:
-                rank_result = future.result()
-                overall_ranks[entry_id] = rank_result
+                data_result = future.result()
+                if data_result:
+                    manager_data[entry_id] = data_result
             except Exception as exc:
                 # Log exception during the parallel fetch
                 print(
-                    f'Entry {entry_id} generated an exception during overall rank fetch: {exc}')
-                # Assign None or pd.NA if fetching failed
-                overall_ranks[entry_id] = None
+                    f'Entry {entry_id} generated an exception during data fetch: {exc}')
+                # Assign None if fetching failed
+                manager_data[entry_id] = None
 
-    # --- Process player data using fetched ranks ---
+    # --- Process player data using fetched data ---
     for player in results:
         entry_id = player.get("entry")
         last_rank = player.get("last_rank", 0)
@@ -120,9 +136,34 @@ def process_page_data(page_data, max_workers=10):
         if last_rank > 0:
             pct_rank_change = ((last_rank - current_rank) / last_rank) * 100
 
-        # Get the pre-fetched overall rank using .get() for safety
-        # Default to None if not found
-        overall_rank = overall_ranks.get(entry_id, None)
+        # Initialize overall rank data
+        overall_rank = None
+        prev_overall_rank = None
+        overall_rank_change = None
+        overall_rank_change_pct = None
+
+        # Get manager data from our fetched results
+        manager_info = manager_data.get(entry_id)
+
+        # Process data based on what was fetched
+        if manager_info:
+            if isinstance(manager_info, dict) and "current" in manager_info and "previous" in manager_info:
+                # We have history data with current and previous GW info
+                if manager_info["current"]:
+                    overall_rank = manager_info["current"].get("overall_rank")
+                if manager_info["previous"]:
+                    prev_overall_rank = manager_info["previous"].get(
+                        "overall_rank")
+
+                # Calculate overall rank changes if we have both values
+                if overall_rank is not None and prev_overall_rank is not None:
+                    overall_rank_change = prev_overall_rank - overall_rank
+                    if prev_overall_rank > 0:  # Avoid division by zero
+                        overall_rank_change_pct = (
+                            overall_rank_change / prev_overall_rank) * 100
+            else:
+                # We only have basic overall rank
+                overall_rank = manager_info
 
         player_data = {
             "player_name": player.get("player_name", "N/A"),
@@ -134,8 +175,17 @@ def process_page_data(page_data, max_workers=10):
             "entry_name": player.get("entry_name", "N/A"),
             "entry": entry_id,
             "event_total": player.get("event_total", 0),
-            "overall_rank": overall_rank  # Add the fetched overall rank
+            "overall_rank": overall_rank,  # Add the fetched overall rank
         }
+
+        # Add overall rank change data if available
+        if prev_overall_rank is not None:
+            player_data["prev_overall_rank"] = prev_overall_rank
+        if overall_rank_change is not None:
+            player_data["overall_rank_change"] = overall_rank_change
+        if overall_rank_change_pct is not None:
+            player_data["overall_rank_change_pct"] = overall_rank_change_pct
+
         players_data_list.append(player_data)
 
     return players_data_list, has_next
@@ -235,12 +285,12 @@ def calculate_overall_rank_changes(players_data, current_gw):
 def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10, limit=None, progress_text=None):
     """
     Fetch league standings and return a DataFrame.
-    Uses parallel fetching for overall ranks within each page.
+    Uses parallel fetching for overall ranks and history data within each page.
 
     Args:
         league_id: The ID of the league to fetch
         current_gw: Current gameweek (needed for overall rank change calculations)
-        max_workers_overall_rank: Maximum number of workers for parallel overall rank fetching
+        max_workers_overall_rank: Maximum number of workers for parallel data fetching
         limit: Optional limit on number of managers to fetch
         progress_text: Optional streamlit text element for progress updates
     """
@@ -269,8 +319,9 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                 has_next = False
                 break
 
+            # Pass current_gw to process_page_data to get overall ranks and history in a single step
             players, current_has_next = process_page_data(
-                page_data, max_workers=max_workers_overall_rank)
+                page_data, current_gw, max_workers=max_workers_overall_rank)
             all_players.extend(players)
             total_fetched = len(all_players)
             has_next = current_has_next
@@ -295,27 +346,6 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
     if not all_players:
         print("No players found for this league.")
         return pd.DataFrame()
-
-    # Get overall rank change data if current_gw is provided
-    if current_gw and current_gw > 1:
-        if progress_text:
-            progress_text.text(
-                f"Fetching overall rank change data for {total_fetched} managers...")
-
-        # Calculate overall rank changes
-        overall_rank_changes = calculate_overall_rank_changes(
-            all_players, current_gw)
-
-        # Add overall rank change data to player data
-        for player in all_players:
-            entry_id = player.get("entry")
-            if entry_id in overall_rank_changes:
-                change_data = overall_rank_changes[entry_id]
-                # Update with precise data from history
-                player["overall_rank"] = change_data["current_rank"]
-                player["prev_overall_rank"] = change_data["prev_rank"]
-                player["overall_rank_change"] = change_data["rank_change"]
-                player["overall_rank_change_pct"] = change_data["pct_change"]
 
     if progress_text:
         progress_text.text(f"Processing data for {total_fetched} managers...")
