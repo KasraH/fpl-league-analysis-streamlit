@@ -28,12 +28,14 @@ def get_player_points(player_id, gw, _session):  # Accept session
         return 0  # Return 0 on non-200 status
 
     player_data = response.json().get("history", [])
-    # Find the specific gameweek data
+    
+    # Sum points for all matches in the gameweek (handles double gameweeks)
+    total_points = 0
     for record in player_data:
         if record.get("round") == gw:
-            return record.get("total_points", 0)
+            total_points += record.get("total_points", 0)
 
-    return 0  # Return 0 if gameweek not found
+    return total_points  # Return sum of all points in the gameweek
 
 
 # --- Get Manager's GW Points and Chip Info ---
