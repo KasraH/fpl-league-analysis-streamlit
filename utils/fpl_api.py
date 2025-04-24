@@ -141,6 +141,8 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
         prev_overall_rank = None
         overall_rank_change = None
         overall_rank_change_pct = None
+        chip_used = None
+        transfer_cost = 0
 
         # Get manager data from our fetched results
         manager_info = manager_data.get(entry_id)
@@ -161,6 +163,10 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
                     if prev_overall_rank > 0:  # Avoid division by zero
                         overall_rank_change_pct = (
                             overall_rank_change / prev_overall_rank) * 100
+
+                # Extract chip used and transfer cost information
+                chip_used = manager_info.get("chip_used")
+                transfer_cost = manager_info.get("transfer_cost", 0)
             else:
                 # We only have basic overall rank
                 overall_rank = manager_info
@@ -176,6 +182,8 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
             "entry": entry_id,
             "event_total": player.get("event_total", 0),
             "overall_rank": overall_rank,  # Add the fetched overall rank
+            "chip_used": chip_used,        # Add chip used information
+            "transfer_cost": transfer_cost  # Add transfer cost information
         }
 
         # Add overall rank change data if available
@@ -216,10 +224,30 @@ def get_manager_history(entry, current_gw):
                 elif gw_data.get("event") == current_gw - 1:
                     prev_gw_data = gw_data
 
+            # Get chip info from picks API
+            chip_used = None
+            transfer_cost = 0
+
+            if current_gw_data:
+                transfer_cost = current_gw_data.get("event_transfers_cost", 0)
+
+                # Get chip information from picks endpoint
+                picks_url = f"https://fantasy.premierleague.com/api/entry/{entry}/event/{current_gw}/picks/"
+                try:
+                    picks_response = session.get(picks_url, timeout=5)
+                    if picks_response.status_code == 200:
+                        picks_data = picks_response.json()
+                        chip_used = picks_data.get("active_chip")
+                except:
+                    # If picks request fails, continue without chip data
+                    pass
+
             # Return both current and previous GW data
             return {
                 "current": current_gw_data,
-                "previous": prev_gw_data
+                "previous": prev_gw_data,
+                "chip_used": chip_used,
+                "transfer_cost": transfer_cost
             }
         else:
             print(
@@ -378,6 +406,11 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
     if "overall_rank_change_pct" in df.columns:
         df["overall_rank_change_pct"] = pd.to_numeric(
             df["overall_rank_change_pct"], errors='coerce').round(2)
+
+    # Convert new chip and transfer cost columns if they exist
+    if "transfer_cost" in df.columns:
+        df["transfer_cost"] = pd.to_numeric(
+            df["transfer_cost"], errors='coerce').astype("Int64")
 
     print(f"Total players retrieved and processed: {len(df)}")
     return df

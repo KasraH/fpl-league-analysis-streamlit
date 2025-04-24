@@ -151,6 +151,7 @@ if st.sidebar.button("Run Analysis"):
     # Define base columns
     display_cols_main = [
         'rank', 'player_name', 'entry_name', 'entry', 'event_total',
+        'chip_used', 'transfer_cost',
         'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
         'rank_change', 'pct_rank_change', 'total'
     ]
