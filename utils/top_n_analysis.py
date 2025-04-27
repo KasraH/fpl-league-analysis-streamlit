@@ -69,7 +69,7 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20, prog
     Correctly identifies Triple Captain picks.
 
     Args:
-        df (pd.DataFrame): DataFrame containing league standings including 'entry' and 'rank'.
+        df (pd.DataFrame): DataFrame containing league standings including 'manager_id' and 'rank'.
         top_n (int): The number of top managers to analyze.
         current_gw (int): The gameweek to analyze.
         _session (requests.Session): The requests session object.
@@ -87,7 +87,7 @@ def analyze_top_n_managers(df, top_n, current_gw, _session, max_workers=20, prog
         return (pd.DataFrame(), pd.DataFrame(), pd.DataFrame(), {}, pd.DataFrame(), pd.DataFrame())
 
     df_top_players = df.nsmallest(actual_n, "rank")
-    manager_ids = df_top_players["entry"].tolist()
+    manager_ids = df_top_players["manager_id"].tolist()
 
     if progress_text:
         progress_text.text(f"Analyzing data for top {actual_n} managers...")

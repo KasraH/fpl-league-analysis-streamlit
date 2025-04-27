@@ -28,7 +28,7 @@ def get_player_points(player_id, gw, _session):  # Accept session
         return 0  # Return 0 on non-200 status
 
     player_data = response.json().get("history", [])
-    
+
     # Sum points for all matches in the gameweek (handles double gameweeks)
     total_points = 0
     for record in player_data:
@@ -101,26 +101,26 @@ def get_manager_gw_points(manager_id, gw, _session):  # Accept session
 # --- Process a Single Manager Row ---
 def process_manager(row, gw, _session):  # Accept session
     """Fetches and calculates adjusted points for a single manager row using the provided session."""
-    manager_id = row["entry"]
-    original_event_total = row["event_total"]  # Keep original as fallback
+    manager_id = row["manager_id"]
+    original_gw_points = row["gw_points"]  # Keep original as fallback
 
     # Pass session to the function that makes the API call
     adjusted_points = get_manager_gw_points(manager_id, gw, _session)
 
     # If fetching/calculation failed, return the original event total (or pd.NA)
-    return adjusted_points if adjusted_points is not None else original_event_total
+    return adjusted_points if adjusted_points is not None else original_gw_points
 
 
 # --- Calculate Adjusted Points for the Entire DataFrame ---
 def calculate_adjusted_points_for_players(df, gw, _session, progress_text=None, max_workers=20, batch_size=50):
-    """Updates DataFrame by calculating adjusted points with parallelization, batching, and optional progress updates, using the provided session."""
+    """Updates DataFrame by calculating net points (points after deducting chip effects and transfer penalties) with parallelization."""
     all_results = []
     total_managers = len(df)
     results_dict = {}  # Use dict to store results by index
 
     if progress_text:
         progress_text.text(
-            f"Calculating adjusted points for {total_managers} managers...")
+            f"Calculating net points for {total_managers} managers...")
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Create futures, passing the session to process_manager
@@ -136,27 +136,27 @@ def calculate_adjusted_points_for_players(df, gw, _session, progress_text=None, 
                 result = future.result()
                 results_dict[original_index] = result
             except Exception as exc:
-                manager_id = df.loc[original_index, 'entry']
+                manager_id = df.loc[original_index, 'manager_id']
                 print(f"Manager ID {manager_id} generated an exception: {exc}")
                 # Fallback to original event total or NaN
                 results_dict[original_index] = df.loc[original_index,
-                                                      'event_total']  # Or pd.NA
+                                                      'gw_points']  # Or pd.NA
 
             # Update progress text periodically
             if progress_text and (i + 1) % 10 == 0:  # Update every 10 managers
                 progress_text.text(
-                    f"Calculated adjusted points for {i+1}/{total_managers} managers...")
+                    f"Calculated net points for {i+1}/{total_managers} managers...")
 
     # Reconstruct results in the original order using the index
     all_results = [results_dict[index] for index in df.index]
 
-    df["adjusted_event_total"] = all_results
+    df["net_points"] = all_results
     # Ensure the column is numeric, coercing errors to NaN
-    df["adjusted_event_total"] = pd.to_numeric(
-        df["adjusted_event_total"], errors='coerce')
+    df["net_points"] = pd.to_numeric(
+        df["net_points"], errors='coerce')
 
     if progress_text:
         progress_text.text(
-            "Adjusted points calculation complete.")  # Final update
+            "Net points calculation complete.")  # Final update
 
     return df

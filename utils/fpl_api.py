@@ -172,18 +172,18 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
                 overall_rank = manager_info
 
         player_data = {
-            "player_name": player.get("player_name", "N/A"),
+            "manager_name": player.get("player_name", "N/A"),
             "rank": current_rank,
             "last_rank": last_rank,
             "rank_change": rank_change,
             "pct_rank_change": pct_rank_change,
             "total": player.get("total", 0),
-            "entry_name": player.get("entry_name", "N/A"),
-            "entry": entry_id,
-            "event_total": player.get("event_total", 0),
+            "team_name": player.get("entry_name", "N/A"),
+            "manager_id": entry_id,
+            "gw_points": player.get("event_total", 0),
             "overall_rank": overall_rank,  # Add the fetched overall rank
             "chip_used": chip_used,        # Add chip used information
-            "transfer_cost": transfer_cost  # Add transfer cost information
+            "transfer_penalty": transfer_cost  # Add transfer cost information
         }
 
         # Add overall rank change data if available
@@ -388,9 +388,10 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
     df["rank_change"] = pd.to_numeric(
         df["rank_change"], errors='coerce').astype("Int64")
     df["total"] = pd.to_numeric(df["total"], errors='coerce').astype("Int64")
-    df["entry"] = pd.to_numeric(df["entry"], errors='coerce').astype("Int64")
-    df["event_total"] = pd.to_numeric(
-        df["event_total"], errors='coerce').astype("Int64")
+    df["manager_id"] = pd.to_numeric(
+        df["manager_id"], errors='coerce').astype("Int64")
+    df["gw_points"] = pd.to_numeric(
+        df["gw_points"], errors='coerce').astype("Int64")
     df["overall_rank"] = pd.to_numeric(
         df["overall_rank"], errors='coerce').astype("Int64")
     df["pct_rank_change"] = pd.to_numeric(
@@ -408,9 +409,9 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
             df["overall_rank_change_pct"], errors='coerce').round(2)
 
     # Convert new chip and transfer cost columns if they exist
-    if "transfer_cost" in df.columns:
-        df["transfer_cost"] = pd.to_numeric(
-            df["transfer_cost"], errors='coerce').astype("Int64")
+    if "transfer_penalty" in df.columns:
+        df["transfer_penalty"] = pd.to_numeric(
+            df["transfer_penalty"], errors='coerce').astype("Int64")
 
     print(f"Total players retrieved and processed: {len(df)}")
     return df

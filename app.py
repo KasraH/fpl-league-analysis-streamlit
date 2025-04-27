@@ -147,26 +147,54 @@ if st.sidebar.button("Run Analysis"):
 
     # Display Overall Standings (Conditionally include adjusted points)
     st.markdown("---")
-    st.subheader("Overall Standings")  # Title changed slightly
+    st.subheader("League Standings")
     # Define base columns
     display_cols_main = [
-        'rank', 'player_name', 'entry_name', 'entry', 'event_total',
-        'chip_used', 'transfer_cost',
+        'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',
+        'chip_used', 'transfer_penalty',
         'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
         'rank_change', 'pct_rank_change', 'total'
     ]
-    # Add adjusted column only if calculated
-    if adjusted_points_calculated and 'adjusted_event_total' in df.columns:
-        # Insert after 'event_total'
-        event_total_index = display_cols_main.index('event_total')
-        display_cols_main.insert(event_total_index + 1, 'adjusted_event_total')
+    # Add net points column if calculated
+    if adjusted_points_calculated and 'net_points' in df.columns:
+        # Insert after 'gw_points'
+        event_total_index = display_cols_main.index('gw_points')
+        display_cols_main.insert(event_total_index + 1, 'net_points')
 
     display_cols_main = [col for col in display_cols_main if col in df.columns]
     df_display = df[display_cols_main].copy()
 
-    # Rename 'entry' column to 'id'
-    if 'entry' in df_display.columns:
-        df_display = df_display.rename(columns={'entry': 'id'})
+    # Create user-friendly column names for display
+    column_renames = {
+        'manager_name': 'Manager',
+        'team_name': 'Team',
+        'manager_id': 'ID',
+        'gw_points': 'GW Points',
+        'net_points': 'Net Points',
+        'chip_used': 'Chip Used',
+        'transfer_penalty': 'Transfer Cost',
+        'overall_rank': 'Overall Rank',
+        'overall_rank_change': 'OR Change',
+        'overall_rank_change_pct': 'OR Change %',
+        'rank_change': 'Rank Change',
+        'pct_rank_change': 'Rank Change %',
+        'total': 'Total Points'
+    }
+
+    # Format chip names to be more readable
+    if 'chip_used' in df_display.columns:
+        chip_map = {
+            '3xc': 'Triple Captain',
+            'bboost': 'Bench Boost',
+            'wildcard': 'Wildcard',
+            'freehit': 'Free Hit',
+            'manager': 'Manager'
+        }
+        df_display['chip_used'] = df_display['chip_used'].map(
+            lambda x: chip_map.get(x, x))
+
+    # Rename columns for display
+    df_display.rename(columns=column_renames, inplace=True)
 
     if 'rank' in df_display.columns:
         df_display.set_index('rank', inplace=True)
@@ -178,38 +206,49 @@ if st.sidebar.button("Run Analysis"):
     st.subheader(f"General League Statistics (GW {current_gw})")
     col1, col2 = st.columns(2)
     with col1:
-        if "event_total" in df.columns:
-            top_points_week = df.loc[df["event_total"]
-                                     == df["event_total"].max()]
-            display_cols = ['player_name',
-                            'entry_name', 'entry', 'event_total']
+        if "gw_points" in df.columns:
+            top_points_week = df.loc[df["gw_points"] == df["gw_points"].max()]
+            display_cols = ['manager_name',
+                            'team_name', 'manager_id', 'gw_points']
             top_points_week = top_points_week[display_cols].rename(columns={
-                                                                   'entry': 'id'})
+                'manager_id': 'ID',
+                'manager_name': 'Manager',
+                'team_name': 'Team',
+                'gw_points': 'GW Points'
+            })
             display_df("🏆 Top Points (Raw)", top_points_week)
 
-        if adjusted_points_calculated and "adjusted_event_total" in df.columns:
-            adj_points_valid = df["adjusted_event_total"].dropna()
-            if not adj_points_valid.empty:
-                top_points_week_without_chips = df.loc[df["adjusted_event_total"] == adj_points_valid.max(
+        if adjusted_points_calculated and "net_points" in df.columns:
+            net_points_valid = df["net_points"].dropna()
+            if not net_points_valid.empty:
+                top_points_week_without_chips = df.loc[df["net_points"] == net_points_valid.max(
                 )]
-                display_cols = ['player_name', 'entry_name',
-                                'entry', 'adjusted_event_total']
-                top_points_week_without_chips = top_points_week_without_chips[display_cols].rename(
-                    columns={'entry': 'id'})
-                display_df("🏆 Top Points (Adjusted)",
+                display_cols = ['manager_name',
+                                'team_name', 'manager_id', 'net_points']
+                top_points_week_without_chips = top_points_week_without_chips[display_cols].rename(columns={
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'net_points': 'Net Points'
+                })
+                display_df("🏆 Top Points (Without Chips)",
                            top_points_week_without_chips)
             else:
-                st.info("Adjusted points not calculated or available.")
+                st.info("Net points not calculated or available.")
 
         if "rank_change" in df.columns:
             valid_rank_change = df["rank_change"].dropna()
             if not valid_rank_change.empty:
                 most_improved = df.loc[df["rank_change"]
                                        == valid_rank_change.max()]
-                display_cols = ['player_name', 'entry_name',
-                                'entry', 'rank_change', 'rank']
-                most_improved = most_improved[display_cols].rename(
-                    columns={'entry': 'id'})
+                display_cols = ['manager_name', 'team_name',
+                                'manager_id', 'rank_change', 'rank']
+                most_improved = most_improved[display_cols].rename(columns={
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'rank_change': 'Rank Change'
+                })
                 display_df("📈 Most Improved Rank", most_improved)
             else:
                 display_df("📈 Most Improved Rank", pd.DataFrame())
@@ -221,10 +260,14 @@ if st.sidebar.button("Run Analysis"):
             if not valid_rank_change.empty:
                 most_dropped = df.loc[df["rank_change"]
                                       == valid_rank_change.min()]
-                display_cols = ['player_name', 'entry_name',
-                                'entry', 'rank_change', 'rank']
-                most_dropped = most_dropped[display_cols].rename(
-                    columns={'entry': 'id'})
+                display_cols = ['manager_name', 'team_name',
+                                'manager_id', 'rank_change', 'rank']
+                most_dropped = most_dropped[display_cols].rename(columns={
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'rank_change': 'Rank Change'
+                })
                 display_df("📉 Biggest Rank Drop", most_dropped)
             else:
                 display_df("📉 Biggest Rank Drop", pd.DataFrame())
@@ -236,16 +279,24 @@ if st.sidebar.button("Run Analysis"):
             if not valid_pct_change.empty:
                 most_improved_pct = df.loc[df["pct_rank_change"]
                                            == valid_pct_change.max()]
-                display_cols = ['player_name', 'entry_name',
-                                'entry', 'pct_rank_change', 'rank']
+                display_cols = ['manager_name', 'team_name',
+                                'manager_id', 'pct_rank_change', 'rank']
                 most_improved_pct = most_improved_pct[display_cols].rename(columns={
-                                                                           'entry': 'id'})
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'pct_rank_change': 'Rank Change %'
+                })
                 display_df("📈 Most Improved Rank (%)", most_improved_pct)
 
                 most_dropped_pct = df.loc[df["pct_rank_change"]
                                           == valid_pct_change.min()]
                 most_dropped_pct = most_dropped_pct[display_cols].rename(columns={
-                                                                         'entry': 'id'})
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'pct_rank_change': 'Rank Change %'
+                })
                 display_df("📉 Biggest Rank Drop (%)", most_dropped_pct)
             else:
                 display_df("📈 Most Improved Rank (%)", pd.DataFrame())
@@ -263,10 +314,14 @@ if st.sidebar.button("Run Analysis"):
             if not valid_rank_change.empty:
                 most_improved = df.loc[df["overall_rank_change"]
                                        == valid_rank_change.max()]
-                display_cols = ['player_name', 'entry_name', 'entry',
+                display_cols = ['manager_name', 'team_name', 'manager_id',
                                 'overall_rank', 'prev_overall_rank', 'overall_rank_change']
-                most_improved = most_improved[display_cols].rename(
-                    columns={'entry': 'id'})
+                most_improved = most_improved[display_cols].rename(columns={
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'overall_rank_change': 'Rank Change'
+                })
                 display_df("📈 Most Improved Overall Rank", most_improved)
             else:
                 st.info("Overall rank change data not available.")
@@ -278,10 +333,14 @@ if st.sidebar.button("Run Analysis"):
             if not valid_pct_change.empty:
                 most_improved_pct = df.loc[df["overall_rank_change_pct"]
                                            == valid_pct_change.max()]
-                display_cols = ['player_name', 'entry_name', 'entry',
+                display_cols = ['manager_name', 'team_name', 'manager_id',
                                 'overall_rank', 'prev_overall_rank', 'overall_rank_change_pct']
                 most_improved_pct = most_improved_pct[display_cols].rename(columns={
-                                                                           'entry': 'id'})
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'overall_rank_change_pct': 'Rank Change %'
+                })
                 display_df("📈 Most Improved Overall Rank (%)",
                            most_improved_pct)
 
@@ -292,10 +351,14 @@ if st.sidebar.button("Run Analysis"):
             if not valid_rank_change.empty:
                 most_dropped = df.loc[df["overall_rank_change"]
                                       == valid_rank_change.min()]
-                display_cols = ['player_name', 'entry_name', 'entry',
+                display_cols = ['manager_name', 'team_name', 'manager_id',
                                 'overall_rank', 'prev_overall_rank', 'overall_rank_change']
-                most_dropped = most_dropped[display_cols].rename(
-                    columns={'entry': 'id'})
+                most_dropped = most_dropped[display_cols].rename(columns={
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'overall_rank_change': 'Rank Change'
+                })
                 display_df("📉 Biggest Overall Rank Drop", most_dropped)
 
         # Biggest overall rank drop by percentage
@@ -305,11 +368,15 @@ if st.sidebar.button("Run Analysis"):
             if not valid_pct_change.empty:
                 most_dropped_pct = df.loc[df["overall_rank_change_pct"]
                                           == valid_pct_change.min()]
-                display_cols = ['player_name', 'entry_name', 'entry',
+                display_cols = ['manager_name', 'team_name', 'manager_id',
                                 'overall_rank', 'prev_overall_rank', 'overall_rank_change_pct']
                 most_dropped_pct = most_dropped_pct[display_cols].rename(columns={
-                                                                         'entry': 'id'})
-                display_df("📉 Biggest Overall Rank Drop (%)", most_dropped_pct)
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'overall_rank_change_pct': 'Rank Change %'
+                })
+                display_df("� Biggest Overall Rank Drop (%)", most_dropped_pct)
 
     # Display Top N Average Stats (Conditionally include adjusted avg)
     st.markdown("---")
@@ -318,22 +385,22 @@ if st.sidebar.button("Run Analysis"):
     if actual_n > 0:
         top_n_df = df.nsmallest(actual_n, 'rank')
         if not top_n_df.empty:
-            avg_event_total_top_n = top_n_df['event_total'].mean(skipna=True)
+            avg_gw_points_top_n = top_n_df['gw_points'].mean(skipna=True)
             avg_overall_rank_top_n = top_n_df['overall_rank'].mean(skipna=True)
 
             # Determine number of columns needed
             num_cols = 3 if adjusted_points_calculated else 2
             cols = st.columns(num_cols)
 
-            cols[0].metric(label=f"Avg GW Points (Top {actual_n})", value=f"{avg_event_total_top_n:.2f}" if pd.notna(
-                avg_event_total_top_n) else "N/A")
+            cols[0].metric(label=f"Avg GW Points (Top {actual_n})", value=f"{avg_gw_points_top_n:.2f}" if pd.notna(
+                avg_gw_points_top_n) else "N/A")
 
             # --- Conditional Display ---
             if adjusted_points_calculated:
-                avg_adjusted_total_top_n = top_n_df['adjusted_event_total'].mean(
+                avg_net_points_top_n = top_n_df['net_points'].mean(
                     skipna=True)
-                cols[1].metric(label=f"Avg Adjusted GW Points (Top {actual_n})", value=f"{avg_adjusted_total_top_n:.2f}" if pd.notna(
-                    avg_adjusted_total_top_n) else "N/A")
+                cols[1].metric(label=f"Avg Net Points (Top {actual_n})", value=f"{avg_net_points_top_n:.2f}" if pd.notna(
+                    avg_net_points_top_n) else "N/A")
                 rank_col_index = 2
             else:
                 rank_col_index = 1  # If only 2 columns, rank is the second one
