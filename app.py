@@ -221,7 +221,9 @@ if st.sidebar.button("Run Analysis"):
         if adjusted_points_calculated and "net_points" in df.columns:
             net_points_valid = df["net_points"].dropna()
             if not net_points_valid.empty:
-                top_points_week_without_chips = df.loc[df["net_points"] == net_points_valid.max(
+                # Filter out managers who used the Free Hit chip
+                no_chips_df = df[df["chip_used"] != "freehit"]
+                top_points_week_without_chips = no_chips_df.loc[no_chips_df["net_points"] == no_chips_df["net_points"].max(
                 )]
                 display_cols = ['manager_name',
                                 'team_name', 'manager_id', 'net_points']
