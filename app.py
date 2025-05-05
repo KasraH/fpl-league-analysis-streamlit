@@ -130,9 +130,9 @@ if st.sidebar.button("Run Analysis"):
                 if chip_data_filtered:
                     st.dataframe(pd.Series(chip_data_filtered, name="Count"))
                 else:
-                    st.info("No chips were used by the top N managers.")
+                    st.info(f"No chips were used by the top {actual_n} managers.")
             else:
-                st.info("No chips were used by the top N managers.")
+                st.info(f"No chips were used by the top {actual_n} managers.")
 
             display_df("Top Captain Picks", df_captains)
             if chip_counts.get("3xc", 0) > 0:
