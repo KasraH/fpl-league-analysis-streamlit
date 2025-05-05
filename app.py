@@ -130,7 +130,8 @@ if st.sidebar.button("Run Analysis"):
                 if chip_data_filtered:
                     st.dataframe(pd.Series(chip_data_filtered, name="Count"))
                 else:
-                    st.info(f"No chips were used by the top {actual_n} managers.")
+                    st.info(
+                        f"No chips were used by the top {actual_n} managers.")
             else:
                 st.info(f"No chips were used by the top {actual_n} managers.")
 
@@ -151,6 +152,7 @@ if st.sidebar.button("Run Analysis"):
     # Define base columns
     display_cols_main = [
         'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',
+        'captain_name', 'vice_captain_name',
         'chip_used', 'transfer_penalty',
         'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
         'rank_change', 'pct_rank_change', 'total'
@@ -171,6 +173,8 @@ if st.sidebar.button("Run Analysis"):
         'manager_id': 'ID',
         'gw_points': 'GW Points',
         'net_points': 'Net Points',
+        'captain_name': 'Captain',
+        'vice_captain_name': 'Vice Captain',
         'chip_used': 'Chip Used',
         'transfer_penalty': 'Transfer Cost',
         'overall_rank': 'Overall Rank',

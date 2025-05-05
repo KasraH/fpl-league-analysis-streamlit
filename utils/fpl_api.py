@@ -3,6 +3,7 @@ import pandas as pd
 from tqdm import tqdm  # Keep if you want terminal progress for long fetches
 import concurrent.futures
 import time  # Keep for potential rate limiting if needed
+import streamlit as st  # For caching
 
 # --- Create a shared session object for reuse across the app ---
 session = requests.Session()
@@ -13,6 +14,27 @@ session.headers.update({'User-Agent': 'FPL League Analysis App'})
 # Consider using Streamlit's caching for persistence across reruns if needed,
 # but be mindful of stale data. In-memory is fine for a single calculation.
 overall_rank_cache = {}
+player_cache = {}  # Cache for player data
+
+
+@st.cache_data(show_spinner=False)
+def get_bootstrap_static():
+    """Fetch and cache bootstrap static data (players, teams, etc.)"""
+    try:
+        bootstrap_url = "https://fantasy.premierleague.com/api/bootstrap-static/"
+        response = session.get(bootstrap_url, timeout=10)
+        if response.status_code == 200:
+            data = response.json()
+            # Create a lookup dict for player names by ID
+            players_dict = {p["id"]: p["web_name"]
+                            for p in data.get("elements", [])}
+            return players_dict
+        else:
+            print(f"Error fetching bootstrap data: {response.status_code}")
+            return {}
+    except Exception as e:
+        print(f"Exception fetching bootstrap data: {e}")
+        return {}
 
 
 def get_overall_rank(entry):
@@ -143,6 +165,8 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
         overall_rank_change_pct = None
         chip_used = None
         transfer_cost = 0
+        captain_name = None
+        vice_captain_name = None
 
         # Get manager data from our fetched results
         manager_info = manager_data.get(entry_id)
@@ -167,6 +191,10 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
                 # Extract chip used and transfer cost information
                 chip_used = manager_info.get("chip_used")
                 transfer_cost = manager_info.get("transfer_cost", 0)
+
+                # Extract captain and vice captain names
+                captain_name = manager_info.get("captain_name")
+                vice_captain_name = manager_info.get("vice_captain_name")
             else:
                 # We only have basic overall rank
                 overall_rank = manager_info
@@ -183,7 +211,9 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
             "gw_points": player.get("event_total", 0),
             "overall_rank": overall_rank,  # Add the fetched overall rank
             "chip_used": chip_used,        # Add chip used information
-            "transfer_penalty": transfer_cost  # Add transfer cost information
+            "transfer_penalty": transfer_cost,  # Add transfer cost information
+            "captain_name": captain_name,  # Add captain name
+            "vice_captain_name": vice_captain_name  # Add vice captain name
         }
 
         # Add overall rank change data if available
@@ -227,17 +257,42 @@ def get_manager_history(entry, current_gw):
             # Get chip info from picks API
             chip_used = None
             transfer_cost = 0
+            captain_id = None
+            vice_captain_id = None
+            captain_name = None
+            vice_captain_name = None
 
             if current_gw_data:
                 transfer_cost = current_gw_data.get("event_transfers_cost", 0)
 
-                # Get chip information from picks endpoint
+                # Get chip and captain information from picks endpoint
                 picks_url = f"https://fantasy.premierleague.com/api/entry/{entry}/event/{current_gw}/picks/"
                 try:
                     picks_response = session.get(picks_url, timeout=5)
                     if picks_response.status_code == 200:
                         picks_data = picks_response.json()
                         chip_used = picks_data.get("active_chip")
+
+                        # Extract captain and vice captain information
+                        picks = picks_data.get("picks", [])
+                        for pick in picks:
+                            if pick.get("is_captain", False):
+                                captain_id = pick.get("element")
+                            if pick.get("is_vice_captain", False):
+                                vice_captain_id = pick.get("element")
+
+                        # Get player names if IDs are found
+                        if captain_id or vice_captain_id:
+                            try:
+                                players_dict = get_bootstrap_static()
+
+                                if captain_id and captain_id in players_dict:
+                                    captain_name = players_dict[captain_id]
+                                if vice_captain_id and vice_captain_id in players_dict:
+                                    vice_captain_name = players_dict[vice_captain_id]
+                            except:
+                                # Continue without player names if bootstrap fetch fails
+                                pass
                 except:
                     # If picks request fails, continue without chip data
                     pass
@@ -247,7 +302,11 @@ def get_manager_history(entry, current_gw):
                 "current": current_gw_data,
                 "previous": prev_gw_data,
                 "chip_used": chip_used,
-                "transfer_cost": transfer_cost
+                "transfer_cost": transfer_cost,
+                "captain_id": captain_id,
+                "vice_captain_id": vice_captain_id,
+                "captain_name": captain_name,
+                "vice_captain_name": vice_captain_name
             }
         else:
             print(
