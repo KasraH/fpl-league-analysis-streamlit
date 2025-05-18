@@ -16,7 +16,7 @@ current_gw = st.sidebar.number_input(
     "Current Gameweek:", min_value=1, max_value=38, step=1, value=None, placeholder="Gameweek...")
 top_n = st.sidebar.number_input(
     "Number of top managers (N) for detailed analysis:",
-    min_value=1, value=10, max_value=200, step=1
+    min_value=1, value=10, step=1
 )
 # --- Analysis Mode Selection ---
 analysis_mode = st.sidebar.radio(
