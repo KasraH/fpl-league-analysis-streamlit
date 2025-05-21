@@ -13,7 +13,6 @@ session.headers.update({'User-Agent': 'FPL League Analysis App'})
 # --- Global cache for overall rank (in-memory for a single run) ---
 # Consider using Streamlit's caching for persistence across reruns if needed,
 # but be mindful of stale data. In-memory is fine for a single calculation.
-overall_rank_cache = {}
 player_cache = {}  # Cache for player data
 
 
@@ -37,15 +36,12 @@ def get_bootstrap_static():
         return {}
 
 
+@st.cache_data(show_spinner=False)
 def get_overall_rank(entry):
     """
     Fetch the overall rank (summary_overall_rank) for the given entry.
-    Uses the shared session and in-memory cache.
+    Uses the shared session and Streamlit's caching.
     """
-    # Check cache first
-    if entry in overall_rank_cache:
-        return overall_rank_cache[entry]
-
     url = f"https://fantasy.premierleague.com/api/entry/{entry}/"
     try:
         # Use the shared session
@@ -53,7 +49,6 @@ def get_overall_rank(entry):
         if response.status_code == 200:
             data = response.json()
             overall_rank = data.get("summary_overall_rank")
-            overall_rank_cache[entry] = overall_rank  # Cache the result
             return overall_rank
         elif response.status_code == 404:
             print(f"Info: Entry {entry} not found (404).")
@@ -229,6 +224,7 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
     return players_data_list, has_next
 
 
+@st.cache_data(show_spinner=False)
 def get_manager_history(entry, current_gw):
     """
     Fetch manager's gameweek history including overall rank for current and previous GWs.
