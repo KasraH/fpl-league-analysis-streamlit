@@ -88,7 +88,7 @@ if st.sidebar.button("Run Analysis"):
             progress_text.text(
                 "Calculating adjusted points for all managers...")
             progress_bar.progress(66, text="Calculating adjusted points...")
-            with st.spinner("Calculating adjusted points (this may take a while)..."):
+            with st.spinner("Calculating adjusted points..."):
                 df = calculate_adjusted_points_for_players(
                     df, current_gw, _session=session, progress_text=progress_text
                 )
