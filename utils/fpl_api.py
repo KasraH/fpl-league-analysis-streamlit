@@ -113,14 +113,14 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
         # Create futures that fetch both overall rank and history in one call
         future_to_entry = {}
 
-        # Only fetch history if we need rank changes (current_gw is provided)
-        if current_gw and current_gw > 1:
+        # Always fetch history data to get captain and chip information
+        if current_gw:
             future_to_entry = {
                 executor.submit(get_manager_history, entry_id, current_gw): entry_id
                 for entry_id in entry_ids
             }
         else:
-            # Otherwise just get basic data with overall rank
+            # If no current_gw provided, just get basic overall rank
             future_to_entry = {
                 executor.submit(get_overall_rank, entry_id): entry_id
                 for entry_id in entry_ids
