@@ -62,12 +62,37 @@ def get_overall_rank(entry):
         return None  # Return None or pd.NA on error
 
 
-def fetch_league_page(league_id, page):
+def get_manager_basic_data(entry_id):
+    """Fetch basic manager data including total points and last event points."""
+    try:
+        url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/"
+        response = session.get(url, timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            return {
+                "summary_overall_points": data.get("summary_overall_points", 0),
+                "summary_event_points": data.get("summary_event_points", 0)
+            }
+        else:
+            print(f"Failed to fetch manager data for entry {entry_id}")
+            return {"summary_overall_points": 0, "summary_event_points": 0}
+    except Exception as e:
+        print(f"Error fetching manager data for entry {entry_id}: {e}")
+        return {"summary_overall_points": 0, "summary_event_points": 0}
+
+
+def fetch_league_page(league_id, page, use_new_entries_pagination=False):
     """
-    Fetch a single page of league standings using the shared session.
+    Fetch a single page of league standings with proper pagination support.
     """
     url = f"https://fantasy.premierleague.com/api/leagues-classic/{league_id}/standings/"
-    params = {"page_standings": page}
+
+    # Use appropriate pagination parameter based on league format
+    if use_new_entries_pagination:
+        params = {"page_new_entries": page}
+    else:
+        params = {"page_standings": page}
+
     try:
         # Use the shared session object for the request
         response = session.get(url, params=params, timeout=10)
@@ -367,7 +392,7 @@ def calculate_overall_rank_changes(players_data, current_gw):
 
 def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10, limit=None, progress_text=None):
     """
-    Fetch league standings and return a DataFrame.
+    Enhanced function to fetch from both standings and new_entries.
     Uses parallel fetching for overall ranks and history data within each page.
 
     Args:
@@ -378,62 +403,202 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
         progress_text: Optional streamlit text element for progress updates
     """
     all_players = []
-    page = 1
-    has_next = True
-    managers_per_page = 50  # FPL API returns 50 managers per page
-    total_fetched = 0
-
-    # Calculate how many pages we need if limit is provided
-    max_pages = None
-    if limit:
-        max_pages = (limit + managers_per_page - 1) // managers_per_page
 
     print(f"Fetching league {league_id} standings...")
-    with tqdm(desc="Fetching pages", unit="page") as pbar:
-        while has_next:
+
+    # Phase 1: Fetch all pages from standings
+    standings_players = []
+    page = 1
+    has_next_standings = True
+
+    print("Fetching from standings...")
+    with tqdm(desc="Standings pages", unit="page") as pbar:
+        while has_next_standings:
             if progress_text:
                 progress_text.text(
-                    f"Fetching league data... {total_fetched} managers retrieved")
+                    f"Fetching standings data... {len(standings_players)} managers retrieved")
 
-            page_data = fetch_league_page(league_id, page)
-
-            if page_data is None:
-                print(f"Warning: Failed to fetch page {page}. Stopping.")
-                has_next = False
+            page_data = fetch_league_page(
+                league_id, page, use_new_entries_pagination=False)
+            if not page_data:
                 break
 
-            # Pass current_gw to process_page_data to get overall ranks and history in a single step
-            players, current_has_next = process_page_data(
-                page_data, current_gw, max_workers=max_workers_overall_rank)
-            all_players.extend(players)
-            total_fetched = len(all_players)
-            has_next = current_has_next
+            standings = page_data.get("standings", {})
+            standings_results = standings.get("results", [])
+            has_next_standings = standings.get("has_next", False)
+
+            # Process standings results with full manager data
+            for player in standings_results:
+                entry_id = player["entry"]
+
+                # Initialize data
+                chip_used = None
+                transfer_cost = 0
+                captain_name = None
+                vice_captain_name = None
+                overall_rank = None
+                prev_overall_rank = None
+                overall_rank_change = None
+                overall_rank_change_pct = None
+
+                # Get comprehensive manager data if current_gw is provided
+                if current_gw:
+                    manager_history = get_manager_history(entry_id, current_gw)
+                    if manager_history:
+                        chip_used = manager_history.get("chip_used")
+                        transfer_cost = manager_history.get("transfer_cost", 0)
+                        captain_name = manager_history.get("captain_name")
+                        vice_captain_name = manager_history.get(
+                            "vice_captain_name")
+
+                        # Get overall rank data
+                        current_data = manager_history.get("current")
+                        prev_data = manager_history.get("previous")
+
+                        overall_rank = current_data.get(
+                            "overall_rank") if current_data else None
+                        prev_overall_rank = prev_data.get(
+                            "overall_rank") if prev_data else None
+
+                        # Calculate overall rank change
+                        if overall_rank and prev_overall_rank:
+                            overall_rank_change = prev_overall_rank - overall_rank
+                            overall_rank_change_pct = (
+                                overall_rank_change / prev_overall_rank) * 100
+
+                # Calculate rank changes
+                current_rank = player["rank"]
+                last_rank = player["last_rank"]
+                rank_change = None if last_rank == 0 else last_rank - current_rank
+                pct_rank_change = None
+                if last_rank > 0:
+                    pct_rank_change = (
+                        (last_rank - current_rank) / last_rank) * 100
+
+                player_data = {
+                    "manager_name": player.get("player_name", "N/A"),
+                    "rank": current_rank,
+                    "last_rank": last_rank,
+                    "rank_change": rank_change,
+                    "pct_rank_change": pct_rank_change,
+                    "total": player.get("total", 0),
+                    "team_name": player.get("entry_name", "N/A"),
+                    "manager_id": entry_id,
+                    "gw_points": player.get("event_total", 0),
+                    "overall_rank": overall_rank,
+                    "overall_rank_change": overall_rank_change,
+                    "overall_rank_change_pct": overall_rank_change_pct,
+                    "chip_used": chip_used,
+                    "transfer_penalty": transfer_cost,
+                    "captain_name": captain_name,
+                    "vice_captain_name": vice_captain_name
+                }
+
+                # Add prev_overall_rank if available
+                if prev_overall_rank is not None:
+                    player_data["prev_overall_rank"] = prev_overall_rank
+
+                standings_players.append(player_data)
 
             pbar.update(1)
-            pbar.set_description(f"Fetched {total_fetched} managers")
-
-            # Stop if we've reached the limit
-            if limit and total_fetched >= limit:
-                all_players = all_players[:limit]  # Trim to exact limit
-                break
-
-            # Stop if we've fetched all needed pages
-            if max_pages and page >= max_pages:
-                break
-
-            if not has_next:
-                break
-
             page += 1
+            time.sleep(0.1)
+
+    # Phase 2: Fetch all pages from new_entries
+    new_entries_players = []
+    page = 1
+    has_next_new_entries = True
+
+    print("Fetching from new_entries...")
+    with tqdm(desc="New entries pages", unit="page") as pbar:
+        while has_next_new_entries:
+            if progress_text:
+                progress_text.text(
+                    f"Fetching new entries... {len(new_entries_players)} managers retrieved")
+
+            page_data = fetch_league_page(
+                league_id, page, use_new_entries_pagination=True)
+            if not page_data:
+                break
+
+            new_entries = page_data.get("new_entries", {})
+            new_entries_results = new_entries.get("results", [])
+            has_next_new_entries = new_entries.get("has_next", False)
+
+            # Process new_entries results with actual data fetching
+            for entry in new_entries_results:
+                entry_id = entry["entry"]
+
+                # Fetch actual manager data to get real points
+                manager_data = get_manager_basic_data(entry_id)
+
+                # Initialize data
+                chip_used = None
+                transfer_cost = 0
+                captain_name = None
+                vice_captain_name = None
+                overall_rank = None
+
+                # Get comprehensive manager data if current_gw is provided
+                if current_gw:
+                    manager_history = get_manager_history(entry_id, current_gw)
+                    if manager_history:
+                        chip_used = manager_history.get("chip_used")
+                        transfer_cost = manager_history.get("transfer_cost", 0)
+                        captain_name = manager_history.get("captain_name")
+                        vice_captain_name = manager_history.get(
+                            "vice_captain_name")
+
+                        # Get overall rank data
+                        current_data = manager_history.get("current")
+                        overall_rank = current_data.get(
+                            "overall_rank") if current_data else None
+
+                player_data = {
+                    "manager_name": f"{entry['player_first_name']} {entry['player_last_name']}",
+                    "rank": None,  # No ranking yet for new entries
+                    "last_rank": 0,
+                    "rank_change": None,
+                    "pct_rank_change": None,
+                    # ✅ Get actual total points
+                    "total": manager_data["summary_overall_points"],
+                    "team_name": entry["entry_name"],
+                    "manager_id": entry_id,
+                    # ✅ Get actual event points
+                    "gw_points": manager_data["summary_event_points"],
+                    "overall_rank": overall_rank,
+                    "overall_rank_change": None,
+                    "overall_rank_change_pct": None,
+                    "chip_used": chip_used,
+                    "transfer_penalty": transfer_cost,
+                    "captain_name": captain_name,
+                    "vice_captain_name": vice_captain_name
+                }
+                new_entries_players.append(player_data)
+
+            pbar.update(1)
+            page += 1
+            time.sleep(0.1)
+
+    # Combine all players
+    all_players = standings_players + new_entries_players
+
+    print(f"Found {len(standings_players)} players in standings")
+    print(f"Found {len(new_entries_players)} players in new_entries")
 
     if not all_players:
         print("No players found for this league.")
         return pd.DataFrame()
 
     if progress_text:
-        progress_text.text(f"Processing data for {total_fetched} managers...")
+        progress_text.text(
+            f"Processing data for {len(all_players)} managers...")
 
-    # Create DataFrame from the collected list of dictionaries
+    # Apply limit if specified
+    if limit and len(all_players) > limit:
+        all_players = all_players[:limit]
+
+    # Create DataFrame from all collected players
     df = pd.DataFrame(all_players)
 
     # Convert types after collecting all data for efficiency
@@ -467,6 +632,12 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
     if "transfer_penalty" in df.columns:
         df["transfer_penalty"] = pd.to_numeric(
             df["transfer_penalty"], errors='coerce').astype("Int64")
+
+    # If no ranks exist, assign them based on total points for new leagues
+    if df["rank"].isna().all():
+        # Sort by total points (highest first) and assign ranks
+        df = df.sort_values("total", ascending=False).reset_index(drop=True)
+        df["rank"] = range(1, len(df) + 1)
 
     print(f"Total players retrieved and processed: {len(df)}")
     return df
