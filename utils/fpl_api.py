@@ -424,81 +424,12 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                 break
 
             standings = page_data.get("standings", {})
-            standings_results = standings.get("results", [])
             has_next_standings = standings.get("has_next", False)
 
-            # Process standings results with full manager data
-            for player in standings_results:
-                entry_id = player["entry"]
-
-                # Initialize data
-                chip_used = None
-                transfer_cost = 0
-                captain_name = None
-                vice_captain_name = None
-                overall_rank = None
-                prev_overall_rank = None
-                overall_rank_change = None
-                overall_rank_change_pct = None
-
-                # Get comprehensive manager data if current_gw is provided
-                if current_gw:
-                    manager_history = get_manager_history(entry_id, current_gw)
-                    if manager_history:
-                        chip_used = manager_history.get("chip_used")
-                        transfer_cost = manager_history.get("transfer_cost", 0)
-                        captain_name = manager_history.get("captain_name")
-                        vice_captain_name = manager_history.get(
-                            "vice_captain_name")
-
-                        # Get overall rank data
-                        current_data = manager_history.get("current")
-                        prev_data = manager_history.get("previous")
-
-                        overall_rank = current_data.get(
-                            "overall_rank") if current_data else None
-                        prev_overall_rank = prev_data.get(
-                            "overall_rank") if prev_data else None
-
-                        # Calculate overall rank change
-                        if overall_rank and prev_overall_rank:
-                            overall_rank_change = prev_overall_rank - overall_rank
-                            overall_rank_change_pct = (
-                                overall_rank_change / prev_overall_rank) * 100
-
-                # Calculate rank changes
-                current_rank = player["rank"]
-                last_rank = player["last_rank"]
-                rank_change = None if last_rank == 0 else last_rank - current_rank
-                pct_rank_change = None
-                if last_rank > 0:
-                    pct_rank_change = (
-                        (last_rank - current_rank) / last_rank) * 100
-
-                player_data = {
-                    "manager_name": player.get("player_name", "N/A"),
-                    "rank": current_rank,
-                    "last_rank": last_rank,
-                    "rank_change": rank_change,
-                    "pct_rank_change": pct_rank_change,
-                    "total": player.get("total", 0),
-                    "team_name": player.get("entry_name", "N/A"),
-                    "manager_id": entry_id,
-                    "gw_points": player.get("event_total", 0),
-                    "overall_rank": overall_rank,
-                    "overall_rank_change": overall_rank_change,
-                    "overall_rank_change_pct": overall_rank_change_pct,
-                    "chip_used": chip_used,
-                    "transfer_penalty": transfer_cost,
-                    "captain_name": captain_name,
-                    "vice_captain_name": vice_captain_name
-                }
-
-                # Add prev_overall_rank if available
-                if prev_overall_rank is not None:
-                    player_data["prev_overall_rank"] = prev_overall_rank
-
-                standings_players.append(player_data)
+            # Process standings results using existing parallel processing
+            players_page_data, _ = process_page_data(
+                page_data, current_gw, max_workers=max_workers_overall_rank)
+            standings_players.extend(players_page_data)
 
             pbar.update(1)
             page += 1
@@ -525,12 +456,54 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
             new_entries_results = new_entries.get("results", [])
             has_next_new_entries = new_entries.get("has_next", False)
 
-            # Process new_entries results with actual data fetching
+            # Process new_entries results with parallel processing
+            entry_ids = [entry["entry"] for entry in new_entries_results]
+
+            # Use parallel processing to fetch manager data
+            manager_data_dict = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_overall_rank) as executor:
+                # Submit tasks for manager basic data
+                future_to_entry = {
+                    executor.submit(get_manager_basic_data, entry_id): entry_id
+                    for entry_id in entry_ids
+                }
+
+                # Collect results
+                for future in concurrent.futures.as_completed(future_to_entry):
+                    entry_id = future_to_entry[future]
+                    try:
+                        manager_data_dict[entry_id] = future.result()
+                    except Exception as exc:
+                        print(
+                            f'Entry {entry_id} basic data fetch failed: {exc}')
+                        manager_data_dict[entry_id] = {
+                            "summary_overall_points": 0, "summary_event_points": 0}
+
+            # Get history data in parallel if current_gw is provided
+            history_data_dict = {}
+            if current_gw:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_overall_rank) as executor:
+                    future_to_entry = {
+                        executor.submit(get_manager_history, entry_id, current_gw): entry_id
+                        for entry_id in entry_ids
+                    }
+
+                    for future in concurrent.futures.as_completed(future_to_entry):
+                        entry_id = future_to_entry[future]
+                        try:
+                            history_data_dict[entry_id] = future.result()
+                        except Exception as exc:
+                            print(
+                                f'Entry {entry_id} history data fetch failed: {exc}')
+                            history_data_dict[entry_id] = None
+
+            # Process each entry using the fetched data
             for entry in new_entries_results:
                 entry_id = entry["entry"]
 
-                # Fetch actual manager data to get real points
-                manager_data = get_manager_basic_data(entry_id)
+                # Get manager data from parallel fetch
+                manager_data = manager_data_dict.get(
+                    entry_id, {"summary_overall_points": 0, "summary_event_points": 0})
 
                 # Initialize data
                 chip_used = None
@@ -539,9 +512,9 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                 vice_captain_name = None
                 overall_rank = None
 
-                # Get comprehensive manager data if current_gw is provided
-                if current_gw:
-                    manager_history = get_manager_history(entry_id, current_gw)
+                # Get history data if available
+                if current_gw and entry_id in history_data_dict:
+                    manager_history = history_data_dict[entry_id]
                     if manager_history:
                         chip_used = manager_history.get("chip_used")
                         transfer_cost = manager_history.get("transfer_cost", 0)
