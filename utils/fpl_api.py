@@ -187,6 +187,7 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
         transfer_cost = 0
         captain_name = None
         vice_captain_name = None
+        points_on_bench = 0
 
         # Get manager data from our fetched results
         manager_info = manager_data.get(entry_id)
@@ -215,6 +216,9 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
                 # Extract captain and vice captain names
                 captain_name = manager_info.get("captain_name")
                 vice_captain_name = manager_info.get("vice_captain_name")
+                
+                # Extract points on bench
+                points_on_bench = manager_info.get("points_on_bench", 0)
             else:
                 # We only have basic overall rank
                 overall_rank = manager_info
@@ -233,7 +237,8 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
             "chip_used": chip_used,        # Add chip used information
             "transfer_penalty": transfer_cost,  # Add transfer cost information
             "captain_name": captain_name,  # Add captain name
-            "vice_captain_name": vice_captain_name  # Add vice captain name
+            "vice_captain_name": vice_captain_name,  # Add vice captain name
+            "points_on_bench": points_on_bench  # Add points on bench
         }
 
         # Add overall rank change data if available
@@ -282,6 +287,7 @@ def get_manager_history(entry, current_gw):
             vice_captain_id = None
             captain_name = None
             vice_captain_name = None
+            points_on_bench = 0
 
             if current_gw_data:
                 transfer_cost = current_gw_data.get("event_transfers_cost", 0)
@@ -293,6 +299,10 @@ def get_manager_history(entry, current_gw):
                     if picks_response.status_code == 200:
                         picks_data = picks_response.json()
                         chip_used = picks_data.get("active_chip")
+                        
+                        # Extract points on bench from entry_history
+                        entry_history = picks_data.get("entry_history", {})
+                        points_on_bench = entry_history.get("points_on_bench", 0)
 
                         # Extract captain and vice captain information
                         picks = picks_data.get("picks", [])
@@ -327,7 +337,8 @@ def get_manager_history(entry, current_gw):
                 "captain_id": captain_id,
                 "vice_captain_id": vice_captain_id,
                 "captain_name": captain_name,
-                "vice_captain_name": vice_captain_name
+                "vice_captain_name": vice_captain_name,
+                "points_on_bench": points_on_bench
             }
         else:
             print(
@@ -511,6 +522,7 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                 captain_name = None
                 vice_captain_name = None
                 overall_rank = None
+                points_on_bench = 0
 
                 # Get history data if available
                 if current_gw and entry_id in history_data_dict:
@@ -521,6 +533,7 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                         captain_name = manager_history.get("captain_name")
                         vice_captain_name = manager_history.get(
                             "vice_captain_name")
+                        points_on_bench = manager_history.get("points_on_bench", 0)
 
                         # Get overall rank data
                         current_data = manager_history.get("current")
@@ -545,7 +558,8 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                     "chip_used": chip_used,
                     "transfer_penalty": transfer_cost,
                     "captain_name": captain_name,
-                    "vice_captain_name": vice_captain_name
+                    "vice_captain_name": vice_captain_name,
+                    "points_on_bench": points_on_bench
                 }
                 new_entries_players.append(player_data)
 
@@ -605,6 +619,11 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
     if "transfer_penalty" in df.columns:
         df["transfer_penalty"] = pd.to_numeric(
             df["transfer_penalty"], errors='coerce').astype("Int64")
+    
+    # Convert points on bench column if it exists
+    if "points_on_bench" in df.columns:
+        df["points_on_bench"] = pd.to_numeric(
+            df["points_on_bench"], errors='coerce').astype("Int64")
 
     # If no ranks exist, assign them based on total points for new leagues
     if df["rank"].isna().all():
