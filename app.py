@@ -37,16 +37,37 @@ def display_df(title, dataframe, current_gw=None):
     if dataframe is not None and not dataframe.empty:
         display_dataframe = dataframe.reset_index(drop=True)
         display_dataframe.index = display_dataframe.index + 1
-        
-        # Create clickable links for team names if manager_id and current_gw are available
+
+        # Add compact link column if conditions are met
+        column_config = {}
         if current_gw and 'team_name' in display_dataframe.columns and 'manager_id' in display_dataframe.columns:
-            display_dataframe['team_name'] = display_dataframe.apply(
-                lambda row: f'<a href="https://fantasy.premierleague.com/entry/{row["manager_id"]}/event/{current_gw}" target="_blank">{row["team_name"]}</a>',
+            # Add a compact link column
+            display_dataframe['view_team'] = display_dataframe.apply(
+                lambda row: f"https://fantasy.premierleague.com/entry/{row['manager_id']}/event/{current_gw}",
                 axis=1
             )
-            st.markdown(display_dataframe.to_html(escape=False), unsafe_allow_html=True)
-        else:
-            st.dataframe(display_dataframe)
+
+            # Reorder columns to put link after team_name
+            cols = list(display_dataframe.columns)
+            team_name_idx = cols.index('team_name')
+            cols.insert(team_name_idx + 1, cols.pop(cols.index('view_team')))
+            display_dataframe = display_dataframe[cols]
+
+            # Rename the link column to just an icon
+            display_dataframe = display_dataframe.rename(
+                columns={'view_team': '🔗'})
+
+            # Configure the link column to be compact
+            column_config = {
+                "🔗": st.column_config.LinkColumn(
+                    "🔗",
+                    help="View team on FPL",
+                    width="small"
+                )
+            }
+
+        st.dataframe(display_dataframe, column_config=column_config,
+                     use_container_width=True)
     else:
         st.info("No data available for this statistic.")
 
@@ -146,9 +167,11 @@ if st.sidebar.button("Run Analysis"):
 
             display_df("Top Captain Picks", df_captains, current_gw)
             if chip_counts.get("3xc", 0) > 0:
-                display_df("Triple Captain Picks", df_triple_captains, current_gw)
+                display_df("Triple Captain Picks",
+                           df_triple_captains, current_gw)
             if chip_counts.get("manager", 0) > 0:
-                display_df("Manager Chip Selections", df_manager_picks, current_gw)
+                display_df("Manager Chip Selections",
+                           df_manager_picks, current_gw)
         with col_detail2:
             display_df("Top Transfers In", df_transfers_in, current_gw)
             display_df("Top Transfers Out", df_transfers_out, current_gw)
@@ -207,22 +230,42 @@ if st.sidebar.button("Run Analysis"):
         df_display['chip_used'] = df_display['chip_used'].map(
             lambda x: chip_map.get(x, x))
 
-    # Create clickable links for team names
+    # Add a compact clickable link column
     if 'team_name' in df_display.columns and 'manager_id' in df_display.columns:
-        df_display['team_name'] = df_display.apply(
-            lambda row: f'<a href="https://fantasy.premierleague.com/entry/{row["manager_id"]}/event/{current_gw}" target="_blank">{row["team_name"]}</a>',
+        # Add a compact link column
+        df_display['view_team'] = df_display.apply(
+            lambda row: f"https://fantasy.premierleague.com/entry/{row['manager_id']}/event/{current_gw}",
             axis=1
         )
 
+        # Reorder columns to put link right after team_name
+        cols = list(df_display.columns)
+        team_name_idx = cols.index('team_name')
+        cols.insert(team_name_idx + 1, cols.pop(cols.index('view_team')))
+        df_display = df_display[cols]
+
     # Rename columns for display
+    column_renames['view_team'] = '🔗'
     df_display.rename(columns=column_renames, inplace=True)
+
+    # Configure the link column to be compact
+    column_config = {}
+    if '🔗' in df_display.columns:
+        column_config = {
+            "🔗": st.column_config.LinkColumn(
+                "🔗",
+                help="View team on FPL",
+                width="small"
+            )
+        }
 
     if 'rank' in df_display.columns:
         df_display.set_index('rank', inplace=True)
         df_display.index.name = None
-    
-    # Display dataframe with HTML links
-    st.markdown(df_display.to_html(escape=False), unsafe_allow_html=True)
+
+    # Display interactive dataframe
+    st.dataframe(df_display, column_config=column_config,
+                 use_container_width=True)
 
     # Display General League Statistics (Conditionally include adjusted stats)
     st.markdown("---")
@@ -312,7 +355,8 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'pct_rank_change': 'Rank Change %'
                 })
-                display_df("📈 Most Improved Rank (%)", most_improved_pct, current_gw)
+                display_df("📈 Most Improved Rank (%)",
+                           most_improved_pct, current_gw)
 
                 most_dropped_pct = df.loc[df["pct_rank_change"]
                                           == valid_pct_change.min()]
@@ -322,10 +366,13 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'pct_rank_change': 'Rank Change %'
                 })
-                display_df("📉 Biggest Rank Drop (%)", most_dropped_pct, current_gw)
+                display_df("📉 Biggest Rank Drop (%)",
+                           most_dropped_pct, current_gw)
             else:
-                display_df("📈 Most Improved Rank (%)", pd.DataFrame(), current_gw)
-                display_df("📉 Biggest Rank Drop (%)", pd.DataFrame(), current_gw)
+                display_df("📈 Most Improved Rank (%)",
+                           pd.DataFrame(), current_gw)
+                display_df("📉 Biggest Rank Drop (%)",
+                           pd.DataFrame(), current_gw)
 
     # Display Overall Rank Change Statistics
     st.markdown("---")
@@ -347,7 +394,8 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'overall_rank_change': 'Rank Change'
                 })
-                display_df("📈 Most Improved Overall Rank", most_improved, current_gw)
+                display_df("📈 Most Improved Overall Rank",
+                           most_improved, current_gw)
             else:
                 st.info("Overall rank change data not available.")
 
@@ -384,7 +432,8 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'overall_rank_change': 'Rank Change'
                 })
-                display_df("📉 Biggest Overall Rank Drop", most_dropped, current_gw)
+                display_df("📉 Biggest Overall Rank Drop",
+                           most_dropped, current_gw)
 
         # Biggest overall rank drop by percentage
         if "overall_rank_change_pct" in df.columns:
