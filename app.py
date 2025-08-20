@@ -9,7 +9,7 @@ from utils.top_n_analysis import analyze_top_n_managers
 st.set_page_config(layout="wide")
 st.title("FPL Mini League Analysis")
 
-# --- Sidebar Inputs ---
+# --- Si                display_df("📉 Biggest Overall Rank Drop (%)", most_dropped_pct, current_gw)ebar Inputs ---
 league_id = st.sidebar.number_input(
     "Enter League ID:", min_value=1, step=1, value=None, placeholder="League ID...")
 current_gw = st.sidebar.number_input(
@@ -32,12 +32,21 @@ calculate_all_adjusted = analysis_mode == "Full League Analysis"
 # --- Helper function to display DataFrames nicely ---
 
 
-def display_df(title, dataframe):
+def display_df(title, dataframe, current_gw=None):
     st.markdown(f"##### {title}")
     if dataframe is not None and not dataframe.empty:
         display_dataframe = dataframe.reset_index(drop=True)
         display_dataframe.index = display_dataframe.index + 1
-        st.dataframe(display_dataframe)
+        
+        # Create clickable links for team names if manager_id and current_gw are available
+        if current_gw and 'team_name' in display_dataframe.columns and 'manager_id' in display_dataframe.columns:
+            display_dataframe['team_name'] = display_dataframe.apply(
+                lambda row: f'<a href="https://fantasy.premierleague.com/entry/{row["manager_id"]}/event/{current_gw}" target="_blank">{row["team_name"]}</a>',
+                axis=1
+            )
+            st.markdown(display_dataframe.to_html(escape=False), unsafe_allow_html=True)
+        else:
+            st.dataframe(display_dataframe)
     else:
         st.info("No data available for this statistic.")
 
@@ -135,14 +144,14 @@ if st.sidebar.button("Run Analysis"):
             else:
                 st.info(f"No chips were used by the top {actual_n} managers.")
 
-            display_df("Top Captain Picks", df_captains)
+            display_df("Top Captain Picks", df_captains, current_gw)
             if chip_counts.get("3xc", 0) > 0:
-                display_df("Triple Captain Picks", df_triple_captains)
+                display_df("Triple Captain Picks", df_triple_captains, current_gw)
             if chip_counts.get("manager", 0) > 0:
-                display_df("Manager Chip Selections", df_manager_picks)
+                display_df("Manager Chip Selections", df_manager_picks, current_gw)
         with col_detail2:
-            display_df("Top Transfers In", df_transfers_in)
-            display_df("Top Transfers Out", df_transfers_out)
+            display_df("Top Transfers In", df_transfers_in, current_gw)
+            display_df("Top Transfers Out", df_transfers_out, current_gw)
     else:
         st.warning("Detailed analysis for top N managers could not be completed.")
 
@@ -198,13 +207,22 @@ if st.sidebar.button("Run Analysis"):
         df_display['chip_used'] = df_display['chip_used'].map(
             lambda x: chip_map.get(x, x))
 
+    # Create clickable links for team names
+    if 'team_name' in df_display.columns and 'manager_id' in df_display.columns:
+        df_display['team_name'] = df_display.apply(
+            lambda row: f'<a href="https://fantasy.premierleague.com/entry/{row["manager_id"]}/event/{current_gw}" target="_blank">{row["team_name"]}</a>',
+            axis=1
+        )
+
     # Rename columns for display
     df_display.rename(columns=column_renames, inplace=True)
 
     if 'rank' in df_display.columns:
         df_display.set_index('rank', inplace=True)
         df_display.index.name = None
-    st.dataframe(df_display)
+    
+    # Display dataframe with HTML links
+    st.markdown(df_display.to_html(escape=False), unsafe_allow_html=True)
 
     # Display General League Statistics (Conditionally include adjusted stats)
     st.markdown("---")
@@ -221,7 +239,7 @@ if st.sidebar.button("Run Analysis"):
                 'team_name': 'Team',
                 'gw_points': 'GW Points'
             })
-            display_df("🏆 Top Points (Raw)", top_points_week)
+            display_df("🏆 Top Points (Raw)", top_points_week, current_gw)
 
         if adjusted_points_calculated and "net_points" in df.columns:
             net_points_valid = df["net_points"].dropna()
@@ -239,7 +257,7 @@ if st.sidebar.button("Run Analysis"):
                     'net_points': 'Net Points'
                 })
                 display_df("🏆 Top Points (Without Chips)",
-                           top_points_week_without_chips)
+                           top_points_week_without_chips, current_gw)
             else:
                 st.info("Net points not calculated or available.")
 
@@ -256,9 +274,9 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'rank_change': 'Rank Change'
                 })
-                display_df("📈 Most Improved Rank", most_improved)
+                display_df("📈 Most Improved Rank", most_improved, current_gw)
             else:
-                display_df("📈 Most Improved Rank", pd.DataFrame())
+                display_df("📈 Most Improved Rank", pd.DataFrame(), current_gw)
 
     with col2:
         # Biggest rank drop (absolute)
@@ -275,9 +293,9 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'rank_change': 'Rank Change'
                 })
-                display_df("📉 Biggest Rank Drop", most_dropped)
+                display_df("📉 Biggest Rank Drop", most_dropped, current_gw)
             else:
-                display_df("📉 Biggest Rank Drop", pd.DataFrame())
+                display_df("📉 Biggest Rank Drop", pd.DataFrame(), current_gw)
 
         # Rank changes by percentage
         if "pct_rank_change" in df.columns:
@@ -294,7 +312,7 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'pct_rank_change': 'Rank Change %'
                 })
-                display_df("📈 Most Improved Rank (%)", most_improved_pct)
+                display_df("📈 Most Improved Rank (%)", most_improved_pct, current_gw)
 
                 most_dropped_pct = df.loc[df["pct_rank_change"]
                                           == valid_pct_change.min()]
@@ -304,10 +322,10 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'pct_rank_change': 'Rank Change %'
                 })
-                display_df("📉 Biggest Rank Drop (%)", most_dropped_pct)
+                display_df("📉 Biggest Rank Drop (%)", most_dropped_pct, current_gw)
             else:
-                display_df("📈 Most Improved Rank (%)", pd.DataFrame())
-                display_df("📉 Biggest Rank Drop (%)", pd.DataFrame())
+                display_df("📈 Most Improved Rank (%)", pd.DataFrame(), current_gw)
+                display_df("📉 Biggest Rank Drop (%)", pd.DataFrame(), current_gw)
 
     # Display Overall Rank Change Statistics
     st.markdown("---")
@@ -329,7 +347,7 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'overall_rank_change': 'Rank Change'
                 })
-                display_df("📈 Most Improved Overall Rank", most_improved)
+                display_df("📈 Most Improved Overall Rank", most_improved, current_gw)
             else:
                 st.info("Overall rank change data not available.")
 
@@ -349,7 +367,7 @@ if st.sidebar.button("Run Analysis"):
                     'overall_rank_change_pct': 'Rank Change %'
                 })
                 display_df("📈 Most Improved Overall Rank (%)",
-                           most_improved_pct)
+                           most_improved_pct, current_gw)
 
     with col2:
         # Biggest overall rank drop (absolute)
@@ -366,7 +384,7 @@ if st.sidebar.button("Run Analysis"):
                     'team_name': 'Team',
                     'overall_rank_change': 'Rank Change'
                 })
-                display_df("📉 Biggest Overall Rank Drop", most_dropped)
+                display_df("📉 Biggest Overall Rank Drop", most_dropped, current_gw)
 
         # Biggest overall rank drop by percentage
         if "overall_rank_change_pct" in df.columns:
