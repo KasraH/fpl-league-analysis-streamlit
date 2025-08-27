@@ -6,12 +6,52 @@ from utils.calculations import calculate_adjusted_points_for_players
 # Import the new analysis function
 from utils.top_n_analysis import analyze_top_n_managers
 
+# Sub-league configuration for specific league 2246
+SUB_LEAGUES_2246 = {
+    "Premier League": [5050980, 8590, 7411, 1675130, 286512, 168631, 476344, 27408, 65456, 380654, 1150237, 6847475, 26387, 382027, 1522561, 1791917, 19389, 260068, 1509543, 13764, 3271367, 3260, 31616, 61450, 91378, 4884, 16269, 251332, 24972, 131106, 6469],
+    "Championship": [2016757, 10891, 393811, 678161, 4128, 434367, 13488, 18080, 1174782, 157958, 25165, 276736, 5211, 10851, 17258, 10253, 58600, 1195578, 383674, 9749, 5316708, 2767081, 4620970, 1548, 7236, 15100, 20430, 65441, 445801, 2188, 15922, 2049, 116664, 1412485, 237731, 5344, 28790, 155795, 13750, 756688, 1221578, 10294, 161384, 319885, 22742, 13539, 9799, 15920, 2898, 5693, 476277, 46807, 11102, 288626, 403588, 33499, 9507],
+    "League One": [35441, 256201, 3126, 163183, 9216, 670694, 4878918, 421595, 74279, 208669, 408504, 468291, 5126, 11376, 944488, 94630, 100271, 141633, 4639438, 14243, 15254, 330432, 109528, 1237425, 7453, 46847, 5566, 265813, 20051, 113059, 565657, 151118, 16205, 57613, 16768, 9601, 792874, 2010351, 14285, 10335, 125174, 666736, 888415, 20699, 395195, 79499],
+    "League Two": [6861293, 4070060, 13554, 447144, 65176, 376665, 14369, 361276, 276477, 85085, 1236368, 17812, 101782, 298858, 4347, 311875, 65991, 570437, 14589, 65963, 362557, 997, 29344, 68452, 2586908, 33636, 6306961, 461788, 1212, 11476, 777908, 18719, 97954, 559574, 1170, 16053, 51725, 4210, 15989, 7977, 49434, 1558072, 235129, 22860, 4703, 201397, 32247, 386672, 4872, 683048, 298175, 391367, 16671, 43917, 68211, 645094, 24459, 33371, 50873, 25099, 6199],
+    "National League": [3131, 7663, 221582, 1211665, 318548, 3204, 204642, 4762, 13159, 171403, 319156, 520440, 22348, 3734338, 2553285, 73643, 10700, 37336, 60934, 46365, 3176, 4809, 53034, 1254869, 58623, 1778814, 62106, 539806, 2002715, 159588, 49602, 1170054, 97886, 128544, 3565986, 222847, 1274782, 8697, 17795, 3866025, 231476, 1627595, 3163338, 3464492, 12919, 15347, 372714, 3557420, 9942, 12443, 19876, 9402, 251361, 908068, 2716, 52537, 52541, 362924, 497597, 3332733, 1836763, 7348, 45740, 125431, 355961, 7643254, 11562, 1884595, 7555, 12450, 55428, 83372, 1058442, 3613054, 243945, 27808, 31455, 290536, 1155111, 3310508, 18091, 141089, 23078, 2887629, 48067, 2851950, 3149877, 12311, 22532, 1382618, 1437245, 2208878, 2326697, 1186, 1046512, 15144, 23652, 337301, 1907093, 42001, 88941, 1960713, 109954, 1076691, 1603824, 2112252, 10635, 4612574, 4706854, 6010272, 6827879, 1448170, 99356, 907514, 20741, 40380, 89566, 711677, 1421082, 8215, 21011, 23748, 32104, 68712, 173846, 205850, 206281, 436, 70648, 914866, 3578266, 9586, 60380, 85011, 233028, 2973882, 4197679, 2009, 6872, 1127009, 4410, 50762, 54599, 1802207, 4340303, 28941, 84552, 100814, 426522, 4546877, 39354, 152587, 340423, 1504330, 215837, 5008, 8934, 52055, 57137, 141390, 603624, 1703396, 3627, 28537, 45866, 2012819, 3379475, 8414147, 5740, 17984, 85388, 90285, 1167658, 6356117, 545266, 828905, 1084497, 1527644, 13253, 13869, 18351, 27839, 103175, 255602, 2894521, 66559, 117127, 306162, 949628, 2667437, 16051, 19378, 150529, 200860, 439767, 510841, 736204, 1035361, 1610937, 1860194, 2508271, 27177, 97646, 111004, 469711, 9011, 16181, 74981, 101565, 372354, 2731530, 9409, 44613, 84440, 130951, 99265, 5397, 9317, 146647, 1907881, 3173450, 91652, 781817, 15786, 23844, 24012, 360117, 460985, 1950084, 2132583, 8876766, 727801, 975296, 39347, 98183, 253380, 278096, 306265, 125932, 169689, 413375, 4766, 5528, 19904, 383788, 4476314, 97488, 747882, 12079, 32589, 10975, 675298, 22102, 107794, 129809, 851936, 1506291, 1982034, 6054488, 1063, 8309, 8610, 79438, 156892, 228025, 2672754, 5356166, 3794626, 17441, 9481, 174879, 37341, 37835, 53998, 291237, 261620, 20474, 30064, 31826, 47303, 117517, 3290944, 600387, 30488, 35852, 1081640, 1447016, 4178359, 50581, 50714, 504369, 820110, 7280, 38043, 884110, 26410, 2517516, 3278859, 6051, 15432, 415698, 1117026, 23975, 2757157, 51084, 2059893, 137068, 21451, 30646, 345969, 172433, 15342, 290718, 8460, 700583, 3198431, 25112, 13137, 5480434, 10807, 71330, 1536817, 132548, 1413318, 2654849, 576779, 5498163, 332499, 874140, 1650690, 1975060, 9711, 4619476, 626169, 90770, 194886, 14130, 37694, 1422672, 2524, 759736, 77210]
+}
+
 st.set_page_config(layout="wide")
 st.title("FPL Mini League Analysis")
 
-# --- Si                display_df("📉 Biggest Overall Rank Drop (%)", most_dropped_pct, current_gw)ebar Inputs ---
+# --- Sidebar Inputs ---
 league_id = st.sidebar.number_input(
     "Enter League ID:", min_value=1, step=1, value=None, placeholder="League ID...")
+
+# Sub-league selector (only for league 2246)
+selected_division = None
+if league_id == 2246:
+    # Add custom CSS to fix cursor for selectbox
+    st.markdown("""
+    <style>
+    .stSelectbox > div > div {
+        cursor: pointer !important;
+    }
+    .stSelectbox > div > div > div {
+        cursor: pointer !important;
+    }
+    [data-testid="stSelectbox"] {
+        cursor: pointer !important;
+    }
+    [data-testid="stSelectbox"] > div {
+        cursor: pointer !important;
+    }
+    [data-testid="stSelectbox"] * {
+        cursor: pointer !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    selected_division = st.sidebar.selectbox(
+        "Select Division:",
+        ["All Divisions"] + list(SUB_LEAGUES_2246.keys()),
+        help="Select a specific division to analyze or view all divisions together"
+    )
+
 current_gw = st.sidebar.number_input(
     "Current Gameweek:", min_value=1, max_value=38, step=1, value=None, placeholder="Gameweek...")
 top_n = st.sidebar.number_input(
@@ -72,6 +112,27 @@ def display_df(title, dataframe, current_gw=None):
         st.info("No data available for this statistic.")
 
 
+# --- Helper function to filter dataframe by division ---
+def filter_by_division(dataframe, selected_division):
+    """Filter dataframe to only include managers from selected division"""
+    if selected_division == "All Divisions" or selected_division is None:
+        return dataframe
+
+    if selected_division in SUB_LEAGUES_2246:
+        manager_ids = SUB_LEAGUES_2246[selected_division]
+        filtered_df = dataframe[dataframe['manager_id'].isin(
+            manager_ids)].copy()
+
+        # Reset rank based on filtered data (sorted by total points descending)
+        filtered_df = filtered_df.sort_values(
+            'total', ascending=False).reset_index(drop=True)
+        filtered_df['rank'] = range(1, len(filtered_df) + 1)
+
+        return filtered_df
+
+    return dataframe
+
+
 # --- Main Button Logic ---
 if st.sidebar.button("Run Analysis"):
     if not league_id or not current_gw:
@@ -86,16 +147,26 @@ if st.sidebar.button("Run Analysis"):
     analysis_results = None
     adjusted_points_calculated = False  # Flag to track if calculation was done
 
+    # Determine specific manager IDs if division filter is applied
+    specific_manager_ids = None
+    if league_id == 2246 and selected_division and selected_division != "All Divisions":
+        specific_manager_ids = SUB_LEAGUES_2246[selected_division]
+
     try:
         # --- Stage 1: Fetch League Standings ---
         progress_text.text("Fetching league standings...")
         progress_bar.progress(10, text="Fetching league standings...")
 
+        if specific_manager_ids:
+            st.info(
+                f"Fetching data for {selected_division}: {len(specific_manager_ids)} managers")
+
         # Only fetch required number of managers if user doesn't need full table
         fetch_limit = None if calculate_all_adjusted else top_n
         with st.spinner("Fetching league standings..."):
             df = get_league_standings(
-                league_id, current_gw=current_gw, limit=fetch_limit, progress_text=progress_text)
+                league_id, current_gw=current_gw, limit=fetch_limit, progress_text=progress_text,
+                specific_manager_ids=specific_manager_ids)
 
         if df.empty:
             st.error(
@@ -142,6 +213,16 @@ if st.sidebar.button("Run Analysis"):
         progress_text.empty()
         st.stop()
 
+    # --- Apply Division Filtering (only for league 2246) ---
+    # Note: If specific_manager_ids was used, filtering is already applied during fetch
+    if league_id == 2246 and selected_division and selected_division != "All Divisions" and specific_manager_ids is None:
+        # This fallback is for cases where specific fetching wasn't used
+        original_count = len(df)
+        df = filter_by_division(df, selected_division)
+        filtered_count = len(df)
+        st.info(
+            f"Showing {selected_division}: {filtered_count} managers (filtered from {original_count} total)")
+
     # --- Display Results ---
 
     # Display Top N results first
@@ -180,7 +261,11 @@ if st.sidebar.button("Run Analysis"):
 
     # Display Overall Standings (Conditionally include adjusted points)
     st.markdown("---")
-    st.subheader("League Standings")
+    # Dynamic title based on division selection
+    if league_id == 2246 and selected_division and selected_division != "All Divisions":
+        st.subheader(f"{selected_division} Standings")
+    else:
+        st.subheader("League Standings")
     # Define base columns
     display_cols_main = [
         'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',

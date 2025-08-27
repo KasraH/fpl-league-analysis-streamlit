@@ -402,7 +402,169 @@ def calculate_overall_rank_changes(players_data, current_gw):
     return rank_changes
 
 
-def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10, limit=None, progress_text=None):
+def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, progress_text=None):
+    """
+    Fetch data for specific manager IDs directly without going through league pages.
+    Much more efficient for sub-league analysis.
+
+    Args:
+        manager_ids: List of manager IDs to fetch
+        current_gw: Current gameweek
+        max_workers: Max workers for parallel processing
+        progress_text: Optional streamlit text element for progress updates
+    """
+    all_players = []
+
+    if progress_text:
+        progress_text.text(
+            f"Fetching data for {len(manager_ids)} specific managers...")
+
+    print(f"Fetching data for {len(manager_ids)} specific managers...")
+
+    # Fetch basic manager data in parallel
+    manager_basic_data = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_entry = {
+            executor.submit(get_manager_basic_data, manager_id): manager_id
+            for manager_id in manager_ids
+        }
+
+        for future in concurrent.futures.as_completed(future_to_entry):
+            manager_id = future_to_entry[future]
+            try:
+                manager_basic_data[manager_id] = future.result()
+            except Exception as exc:
+                print(f'Manager {manager_id} basic data fetch failed: {exc}')
+                manager_basic_data[manager_id] = {
+                    "summary_overall_points": 0, "summary_event_points": 0}
+
+    # Fetch history data in parallel if current_gw is provided
+    manager_history_data = {}
+    if current_gw:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_entry = {
+                executor.submit(get_manager_history, manager_id, current_gw): manager_id
+                for manager_id in manager_ids
+            }
+
+            for future in concurrent.futures.as_completed(future_to_entry):
+                manager_id = future_to_entry[future]
+                try:
+                    manager_history_data[manager_id] = future.result()
+                except Exception as exc:
+                    print(
+                        f'Manager {manager_id} history data fetch failed: {exc}')
+                    manager_history_data[manager_id] = None
+
+    # Process each manager using the fetched data
+    for manager_id in manager_ids:
+        # Get basic data
+        basic_data = manager_basic_data.get(
+            manager_id, {"summary_overall_points": 0, "summary_event_points": 0})
+
+        # Initialize data
+        chip_used = None
+        transfer_cost = 0
+        captain_name = None
+        vice_captain_name = None
+        points_on_bench = 0
+        overall_rank = None
+        prev_overall_rank = None
+        overall_rank_change = None
+        overall_rank_change_pct = None
+
+        # Get history data if available
+        if current_gw and manager_id in manager_history_data:
+            history_data = manager_history_data[manager_id]
+            if history_data:
+                chip_used = history_data.get("chip_used")
+                transfer_cost = history_data.get("transfer_cost", 0)
+                captain_name = history_data.get("captain_name")
+                vice_captain_name = history_data.get("vice_captain_name")
+                points_on_bench = history_data.get("points_on_bench", 0)
+
+                # Get overall rank data
+                current_data = history_data.get("current")
+                prev_data = history_data.get("previous")
+
+                overall_rank = current_data.get(
+                    "overall_rank") if current_data else None
+                prev_overall_rank = prev_data.get(
+                    "overall_rank") if prev_data else None
+
+                # Calculate overall rank change
+                if overall_rank and prev_overall_rank:
+                    overall_rank_change = prev_overall_rank - overall_rank
+                    overall_rank_change_pct = (
+                        overall_rank_change / prev_overall_rank) * 100
+
+        player_data = {
+            # We don't have name from this method
+            "manager_name": f"Manager {manager_id}",
+            "rank": None,  # Will be calculated based on points
+            "last_rank": 0,
+            "rank_change": None,
+            "pct_rank_change": None,
+            "total": basic_data["summary_overall_points"],
+            # We don't have team name from this method
+            "team_name": f"Team {manager_id}",
+            "manager_id": manager_id,
+            "gw_points": basic_data["summary_event_points"],
+            "overall_rank": overall_rank,
+            "overall_rank_change": overall_rank_change,
+            "overall_rank_change_pct": overall_rank_change_pct,
+            "chip_used": chip_used,
+            "transfer_penalty": transfer_cost,
+            "captain_name": captain_name,
+            "vice_captain_name": vice_captain_name,
+            "points_on_bench": points_on_bench
+        }
+
+        # Add prev_overall_rank if available
+        if prev_overall_rank is not None:
+            player_data["prev_overall_rank"] = prev_overall_rank
+
+        all_players.append(player_data)
+
+    if not all_players:
+        print("No players found.")
+        return pd.DataFrame()
+
+    # Create DataFrame
+    df = pd.DataFrame(all_players)
+
+    # Sort by total points (highest first) and assign ranks
+    df = df.sort_values("total", ascending=False).reset_index(drop=True)
+    df["rank"] = range(1, len(df) + 1)
+
+    # Calculate rank changes (would need previous data for this)
+    # For now, set to None since we don't have previous league positions
+    df["last_rank"] = 0
+    df["rank_change"] = None
+    df["pct_rank_change"] = None
+
+    # Convert types
+    df["rank"] = pd.to_numeric(df["rank"], errors='coerce').astype("Int64")
+    df["total"] = pd.to_numeric(df["total"], errors='coerce').astype("Int64")
+    df["manager_id"] = pd.to_numeric(
+        df["manager_id"], errors='coerce').astype("Int64")
+    df["gw_points"] = pd.to_numeric(
+        df["gw_points"], errors='coerce').astype("Int64")
+    df["overall_rank"] = pd.to_numeric(
+        df["overall_rank"], errors='coerce').astype("Int64")
+
+    if "transfer_penalty" in df.columns:
+        df["transfer_penalty"] = pd.to_numeric(
+            df["transfer_penalty"], errors='coerce').astype("Int64")
+    if "points_on_bench" in df.columns:
+        df["points_on_bench"] = pd.to_numeric(
+            df["points_on_bench"], errors='coerce').astype("Int64")
+
+    print(f"Successfully processed {len(df)} managers")
+    return df
+
+
+def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10, limit=None, progress_text=None, specific_manager_ids=None):
     """
     Enhanced function to fetch from both standings and new_entries.
     Uses parallel fetching for overall ranks and history data within each page.
@@ -413,7 +575,21 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
         max_workers_overall_rank: Maximum number of workers for parallel data fetching
         limit: Optional limit on number of managers to fetch
         progress_text: Optional streamlit text element for progress updates
+        specific_manager_ids: Optional list of specific manager IDs to fetch (for sub-leagues)
     """
+
+    # If specific manager IDs are provided, use the efficient direct fetch method
+    if specific_manager_ids:
+        print(
+            f"Using efficient fetch for {len(specific_manager_ids)} specific managers")
+        return get_specific_managers_data(
+            specific_manager_ids,
+            current_gw=current_gw,
+            max_workers=max_workers_overall_rank,
+            progress_text=progress_text
+        )
+
+    # Otherwise, use the original full league fetch method
     all_players = []
 
     print(f"Fetching league {league_id} standings...")
