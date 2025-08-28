@@ -79,7 +79,7 @@ def get_manager_basic_data(entry_id):
         else:
             print(f"Failed to fetch manager data for entry {entry_id}")
             return {
-                "summary_overall_points": 0, 
+                "summary_overall_points": 0,
                 "summary_event_points": 0,
                 "player_first_name": "",
                 "player_last_name": "",
@@ -88,7 +88,7 @@ def get_manager_basic_data(entry_id):
     except Exception as e:
         print(f"Error fetching manager data for entry {entry_id}: {e}")
         return {
-            "summary_overall_points": 0, 
+            "summary_overall_points": 0,
             "summary_event_points": 0,
             "player_first_name": "",
             "player_last_name": "",
@@ -457,7 +457,7 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
             except Exception as exc:
                 print(f'Manager {manager_id} basic data fetch failed: {exc}')
                 manager_basic_data[manager_id] = {
-                    "summary_overall_points": 0, 
+                    "summary_overall_points": 0,
                     "summary_event_points": 0,
                     "player_first_name": "",
                     "player_last_name": "",
@@ -486,7 +486,7 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
     for manager_id in manager_ids:
         # Get basic data
         basic_data = manager_basic_data.get(manager_id, {
-            "summary_overall_points": 0, 
+            "summary_overall_points": 0,
             "summary_event_points": 0,
             "player_first_name": "",
             "player_last_name": "",
@@ -500,7 +500,7 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
             manager_name = f"{first_name} {last_name}".strip()
         else:
             manager_name = f"Manager {manager_id}"
-        
+
         # Get team name
         team_name = basic_data.get("name", f"Team {manager_id}")
         if not team_name:
@@ -599,25 +599,27 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
     if current_gw and current_gw > 1:
         # Calculate previous total points (total - current gw points)
         df["prev_total"] = df["total"] - df["gw_points"]
-        
+
         # Create a temporary dataframe to calculate previous ranks
         prev_df = df[["manager_id", "prev_total"]].copy()
-        prev_df = prev_df.sort_values("prev_total", ascending=False).reset_index(drop=True)
+        prev_df = prev_df.sort_values(
+            "prev_total", ascending=False).reset_index(drop=True)
         prev_df["prev_rank"] = range(1, len(prev_df) + 1)
-        
+
         # Merge back the previous ranks
-        df = df.merge(prev_df[["manager_id", "prev_rank"]], on="manager_id", how="left")
-        
+        df = df.merge(prev_df[["manager_id", "prev_rank"]],
+                      on="manager_id", how="left")
+
         # Update last_rank with the calculated previous ranks
         df["last_rank"] = df["prev_rank"]
-        
+
         # Calculate rank changes within the sub-league
         df["rank_change"] = df["last_rank"] - df["rank"]
         df["pct_rank_change"] = df.apply(
-            lambda row: (row["rank_change"] / row["last_rank"]) * 100 
+            lambda row: (row["rank_change"] / row["last_rank"]) * 100
             if row["last_rank"] and row["last_rank"] > 0 else None, axis=1
         )
-        
+
         # Drop the temporary columns
         df = df.drop(["prev_total", "prev_rank"], axis=1)
 
