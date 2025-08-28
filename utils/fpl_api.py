@@ -188,6 +188,9 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
         captain_name = None
         vice_captain_name = None
         points_on_bench = 0
+        
+        # Default to league standings gameweek points
+        gw_points = player.get("event_total", 0)
 
         # Get manager data from our fetched results
         manager_info = manager_data.get(entry_id)
@@ -198,6 +201,9 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
                 # We have history data with current and previous GW info
                 if manager_info["current"]:
                     overall_rank = manager_info["current"].get("overall_rank")
+                    # Use the specific gameweek's points from history data
+                    if "points" in manager_info["current"]:
+                        gw_points = manager_info["current"]["points"]
                 if manager_info["previous"]:
                     prev_overall_rank = manager_info["previous"].get(
                         "overall_rank")
@@ -232,7 +238,7 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
             "total": player.get("total", 0),
             "team_name": player.get("entry_name", "N/A"),
             "manager_id": entry_id,
-            "gw_points": player.get("event_total", 0),
+            "gw_points": gw_points,  # Use the correct gameweek points
             "overall_rank": overall_rank,  # Add the fetched overall rank
             "chip_used": chip_used,        # Add chip used information
             "transfer_penalty": transfer_cost,  # Add transfer cost information
@@ -472,6 +478,9 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
         prev_overall_rank = None
         overall_rank_change = None
         overall_rank_change_pct = None
+        
+        # Default to basic data for gameweek points
+        gw_points = basic_data["summary_event_points"]
 
         # Get history data if available
         if current_gw and manager_id in manager_history_data:
@@ -492,6 +501,10 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
                 prev_overall_rank = prev_data.get(
                     "overall_rank") if prev_data else None
 
+                # Use the specific gameweek's points from history data
+                if current_data and "points" in current_data:
+                    gw_points = current_data["points"]
+
                 # Calculate overall rank change
                 if overall_rank and prev_overall_rank:
                     overall_rank_change = prev_overall_rank - overall_rank
@@ -509,7 +522,7 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
             # We don't have team name from this method
             "team_name": f"Team {manager_id}",
             "manager_id": manager_id,
-            "gw_points": basic_data["summary_event_points"],
+            "gw_points": gw_points,  # Use the correct gameweek points
             "overall_rank": overall_rank,
             "overall_rank_change": overall_rank_change,
             "overall_rank_change_pct": overall_rank_change_pct,
