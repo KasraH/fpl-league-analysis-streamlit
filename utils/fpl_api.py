@@ -188,7 +188,7 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
         captain_name = None
         vice_captain_name = None
         points_on_bench = 0
-        
+
         # Default to league standings gameweek points
         gw_points = player.get("event_total", 0)
 
@@ -478,7 +478,7 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
         prev_overall_rank = None
         overall_rank_change = None
         overall_rank_change_pct = None
-        
+
         # Default to basic data for gameweek points
         gw_points = basic_data["summary_event_points"]
 
