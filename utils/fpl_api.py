@@ -63,7 +63,7 @@ def get_overall_rank(entry):
 
 
 def get_manager_basic_data(entry_id):
-    """Fetch basic manager data including total points and last event points."""
+    """Fetch basic manager data including total points, last event points, and names."""
     try:
         url = f"https://fantasy.premierleague.com/api/entry/{entry_id}/"
         response = session.get(url, timeout=5)
@@ -71,14 +71,29 @@ def get_manager_basic_data(entry_id):
             data = response.json()
             return {
                 "summary_overall_points": data.get("summary_overall_points", 0),
-                "summary_event_points": data.get("summary_event_points", 0)
+                "summary_event_points": data.get("summary_event_points", 0),
+                "player_first_name": data.get("player_first_name", ""),
+                "player_last_name": data.get("player_last_name", ""),
+                "name": data.get("name", "")  # team name
             }
         else:
             print(f"Failed to fetch manager data for entry {entry_id}")
-            return {"summary_overall_points": 0, "summary_event_points": 0}
+            return {
+                "summary_overall_points": 0, 
+                "summary_event_points": 0,
+                "player_first_name": "",
+                "player_last_name": "",
+                "name": ""
+            }
     except Exception as e:
         print(f"Error fetching manager data for entry {entry_id}: {e}")
-        return {"summary_overall_points": 0, "summary_event_points": 0}
+        return {
+            "summary_overall_points": 0, 
+            "summary_event_points": 0,
+            "player_first_name": "",
+            "player_last_name": "",
+            "name": ""
+        }
 
 
 def fetch_league_page(league_id, page, use_new_entries_pagination=False):
@@ -442,7 +457,12 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
             except Exception as exc:
                 print(f'Manager {manager_id} basic data fetch failed: {exc}')
                 manager_basic_data[manager_id] = {
-                    "summary_overall_points": 0, "summary_event_points": 0}
+                    "summary_overall_points": 0, 
+                    "summary_event_points": 0,
+                    "player_first_name": "",
+                    "player_last_name": "",
+                    "name": ""
+                }
 
     # Fetch history data in parallel if current_gw is provided
     manager_history_data = {}
@@ -465,8 +485,26 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
     # Process each manager using the fetched data
     for manager_id in manager_ids:
         # Get basic data
-        basic_data = manager_basic_data.get(
-            manager_id, {"summary_overall_points": 0, "summary_event_points": 0})
+        basic_data = manager_basic_data.get(manager_id, {
+            "summary_overall_points": 0, 
+            "summary_event_points": 0,
+            "player_first_name": "",
+            "player_last_name": "",
+            "name": ""
+        })
+
+        # Create manager name from first and last name
+        first_name = basic_data.get("player_first_name", "")
+        last_name = basic_data.get("player_last_name", "")
+        if first_name and last_name:
+            manager_name = f"{first_name} {last_name}".strip()
+        else:
+            manager_name = f"Manager {manager_id}"
+        
+        # Get team name
+        team_name = basic_data.get("name", f"Team {manager_id}")
+        if not team_name:
+            team_name = f"Team {manager_id}"
 
         # Initialize data
         chip_used = None
@@ -512,15 +550,13 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
                         overall_rank_change / prev_overall_rank) * 100
 
         player_data = {
-            # We don't have name from this method
-            "manager_name": f"Manager {manager_id}",
+            "manager_name": manager_name,  # Use the real manager name
             "rank": None,  # Will be calculated based on points
             "last_rank": 0,
             "rank_change": None,
             "pct_rank_change": None,
             "total": basic_data["summary_overall_points"],
-            # We don't have team name from this method
-            "team_name": f"Team {manager_id}",
+            "team_name": team_name,  # Use the real team name
             "manager_id": manager_id,
             "gw_points": gw_points,  # Use the correct gameweek points
             "overall_rank": overall_rank,
@@ -546,15 +582,47 @@ def get_specific_managers_data(manager_ids, current_gw=None, max_workers=10, pro
     # Create DataFrame
     df = pd.DataFrame(all_players)
 
-    # Sort by total points (highest first) and assign ranks
+    if df.empty:
+        return df
+
+    # Sort by total points (highest first) and assign current ranks
     df = df.sort_values("total", ascending=False).reset_index(drop=True)
     df["rank"] = range(1, len(df) + 1)
 
-    # Calculate rank changes (would need previous data for this)
-    # For now, set to None since we don't have previous league positions
+    # Initialize rank change columns
     df["last_rank"] = 0
     df["rank_change"] = None
     df["pct_rank_change"] = None
+
+    # Calculate previous ranks and rank changes for sub-league
+    # We'll calculate this based on points before the current gameweek
+    if current_gw and current_gw > 1:
+        # Calculate previous total points (total - current gw points)
+        df["prev_total"] = df["total"] - df["gw_points"]
+        
+        # Create a temporary dataframe to calculate previous ranks
+        prev_df = df[["manager_id", "prev_total"]].copy()
+        prev_df = prev_df.sort_values("prev_total", ascending=False).reset_index(drop=True)
+        prev_df["prev_rank"] = range(1, len(prev_df) + 1)
+        
+        # Merge back the previous ranks
+        df = df.merge(prev_df[["manager_id", "prev_rank"]], on="manager_id", how="left")
+        
+        # Update last_rank with the calculated previous ranks
+        df["last_rank"] = df["prev_rank"]
+        
+        # Calculate rank changes within the sub-league
+        df["rank_change"] = df["last_rank"] - df["rank"]
+        df["pct_rank_change"] = df.apply(
+            lambda row: (row["rank_change"] / row["last_rank"]) * 100 
+            if row["last_rank"] and row["last_rank"] > 0 else None, axis=1
+        )
+        
+        # Drop the temporary columns
+        df = df.drop(["prev_total", "prev_rank"], axis=1)
+
+    # Re-sort by current rank to maintain proper order
+    df = df.sort_values("rank", ascending=True).reset_index(drop=True)
 
     # Convert types
     df["rank"] = pd.to_numeric(df["rank"], errors='coerce').astype("Int64")
