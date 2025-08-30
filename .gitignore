@@ -23,3 +23,25 @@ Thumbs.db
 
 # Streamlit secrets (if you ever use st.secrets)
 .streamlit/secrets.toml
+
+# Test files and demos
+test_*.py
+*_test.py
+speed_test.py
+demo_*.py
+cache_demo.py
+cache_manager.py
+extract_leagues.py
+player_combination_analysis.py
+
+# Cache directories
+fpl_cache/
+
+# Temporary documentation
+TOP_N_ANALYSIS_FIX.md
+
+# CSV data files
+*.csv
+
+# Jupyter notebooks (if temporary)
+*.ipynb

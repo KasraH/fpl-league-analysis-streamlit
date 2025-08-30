@@ -677,17 +677,25 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
 
     print(f"Fetching league {league_id} standings...")
 
-    # Phase 1: Fetch all pages from standings
+    # Phase 1: Fetch pages from standings (with early termination for limit)
     standings_players = []
     page = 1
     has_next_standings = True
 
     print("Fetching from standings...")
+    if limit:
+        print(f"Early termination enabled: will stop at {limit} managers")
+    
     with tqdm(desc="Standings pages", unit="page") as pbar:
         while has_next_standings:
             if progress_text:
                 progress_text.text(
                     f"Fetching standings data... {len(standings_players)} managers retrieved")
+
+            # Check if we already have enough managers for the limit
+            if limit and len(standings_players) >= limit:
+                print(f"Reached limit of {limit} managers, stopping fetch")
+                break
 
             page_data = fetch_league_page(
                 league_id, page, use_new_entries_pagination=False)
@@ -706,133 +714,151 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
             page += 1
             time.sleep(0.1)
 
-    # Phase 2: Fetch all pages from new_entries
-    new_entries_players = []
-    page = 1
-    has_next_new_entries = True
+    # If we have enough from standings, we can skip new_entries entirely
+    if limit and len(standings_players) >= limit:
+        print(f"Got {len(standings_players)} managers from standings (limit: {limit}), skipping new_entries")
+        all_players = standings_players[:limit]
+        
+        # Skip the new_entries phase entirely
+        print(f"Found {len(standings_players)} players in standings")
+        print(f"Skipped new_entries phase due to limit")
+    else:
+        # Phase 2: Fetch pages from new_entries (with remaining limit if applicable)
+        new_entries_players = []
+        page = 1
+        has_next_new_entries = True
+        remaining_limit = None
+        if limit:
+            remaining_limit = limit - len(standings_players)
+            print(f"Need {remaining_limit} more managers from new_entries")
 
-    print("Fetching from new_entries...")
-    with tqdm(desc="New entries pages", unit="page") as pbar:
-        while has_next_new_entries:
-            if progress_text:
-                progress_text.text(
-                    f"Fetching new entries... {len(new_entries_players)} managers retrieved")
+        print("Fetching from new_entries...")
+        with tqdm(desc="New entries pages", unit="page") as pbar:
+            while has_next_new_entries:
+                if progress_text:
+                    progress_text.text(
+                        f"Fetching new entries... {len(new_entries_players)} managers retrieved")
 
-            page_data = fetch_league_page(
-                league_id, page, use_new_entries_pagination=True)
-            if not page_data:
-                break
+                # Check if we have enough managers with remaining limit
+                if remaining_limit and len(new_entries_players) >= remaining_limit:
+                    print(f"Reached remaining limit of {remaining_limit} managers from new_entries")
+                    break
 
-            new_entries = page_data.get("new_entries", {})
-            new_entries_results = new_entries.get("results", [])
-            has_next_new_entries = new_entries.get("has_next", False)
+                page_data = fetch_league_page(
+                    league_id, page, use_new_entries_pagination=True)
+                if not page_data:
+                    break
 
-            # Process new_entries results with parallel processing
-            entry_ids = [entry["entry"] for entry in new_entries_results]
+                new_entries = page_data.get("new_entries", {})
+                new_entries_results = new_entries.get("results", [])
+                has_next_new_entries = new_entries.get("has_next", False)
 
-            # Use parallel processing to fetch manager data
-            manager_data_dict = {}
-            with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_overall_rank) as executor:
-                # Submit tasks for manager basic data
-                future_to_entry = {
-                    executor.submit(get_manager_basic_data, entry_id): entry_id
-                    for entry_id in entry_ids
-                }
+                # Process new_entries results with parallel processing
+                entry_ids = [entry["entry"] for entry in new_entries_results]
 
-                # Collect results
-                for future in concurrent.futures.as_completed(future_to_entry):
-                    entry_id = future_to_entry[future]
-                    try:
-                        manager_data_dict[entry_id] = future.result()
-                    except Exception as exc:
-                        print(
-                            f'Entry {entry_id} basic data fetch failed: {exc}')
-                        manager_data_dict[entry_id] = {
-                            "summary_overall_points": 0, "summary_event_points": 0}
-
-            # Get history data in parallel if current_gw is provided
-            history_data_dict = {}
-            if current_gw:
+                # Use parallel processing to fetch manager data
+                manager_data_dict = {}
                 with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_overall_rank) as executor:
+                    # Submit tasks for manager basic data
                     future_to_entry = {
-                        executor.submit(get_manager_history, entry_id, current_gw): entry_id
+                        executor.submit(get_manager_basic_data, entry_id): entry_id
                         for entry_id in entry_ids
                     }
 
+                    # Collect results
                     for future in concurrent.futures.as_completed(future_to_entry):
                         entry_id = future_to_entry[future]
                         try:
-                            history_data_dict[entry_id] = future.result()
+                            manager_data_dict[entry_id] = future.result()
                         except Exception as exc:
                             print(
-                                f'Entry {entry_id} history data fetch failed: {exc}')
-                            history_data_dict[entry_id] = None
+                                f'Entry {entry_id} basic data fetch failed: {exc}')
+                            manager_data_dict[entry_id] = {
+                                "summary_overall_points": 0, "summary_event_points": 0}
 
-            # Process each entry using the fetched data
-            for entry in new_entries_results:
-                entry_id = entry["entry"]
+                # Get history data in parallel if current_gw is provided
+                history_data_dict = {}
+                if current_gw:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers_overall_rank) as executor:
+                        future_to_entry = {
+                            executor.submit(get_manager_history, entry_id, current_gw): entry_id
+                            for entry_id in entry_ids
+                        }
 
-                # Get manager data from parallel fetch
-                manager_data = manager_data_dict.get(
-                    entry_id, {"summary_overall_points": 0, "summary_event_points": 0})
+                        for future in concurrent.futures.as_completed(future_to_entry):
+                            entry_id = future_to_entry[future]
+                            try:
+                                history_data_dict[entry_id] = future.result()
+                            except Exception as exc:
+                                print(
+                                    f'Entry {entry_id} history data fetch failed: {exc}')
+                                history_data_dict[entry_id] = None
 
-                # Initialize data
-                chip_used = None
-                transfer_cost = 0
-                captain_name = None
-                vice_captain_name = None
-                overall_rank = None
-                points_on_bench = 0
+                # Process each entry using the fetched data
+                for entry in new_entries_results:
+                    entry_id = entry["entry"]
 
-                # Get history data if available
-                if current_gw and entry_id in history_data_dict:
-                    manager_history = history_data_dict[entry_id]
-                    if manager_history:
-                        chip_used = manager_history.get("chip_used")
-                        transfer_cost = manager_history.get("transfer_cost", 0)
-                        captain_name = manager_history.get("captain_name")
-                        vice_captain_name = manager_history.get(
-                            "vice_captain_name")
-                        points_on_bench = manager_history.get(
-                            "points_on_bench", 0)
+                    # Get manager data from parallel fetch
+                    manager_data = manager_data_dict.get(
+                        entry_id, {"summary_overall_points": 0, "summary_event_points": 0})
 
-                        # Get overall rank data
-                        current_data = manager_history.get("current")
-                        overall_rank = current_data.get(
-                            "overall_rank") if current_data else None
+                    # Initialize data
+                    chip_used = None
+                    transfer_cost = 0
+                    captain_name = None
+                    vice_captain_name = None
+                    overall_rank = None
+                    points_on_bench = 0
 
-                player_data = {
-                    "manager_name": f"{entry['player_first_name']} {entry['player_last_name']}",
-                    "rank": None,  # No ranking yet for new entries
-                    "last_rank": 0,
-                    "rank_change": None,
-                    "pct_rank_change": None,
-                    # ✅ Get actual total points
-                    "total": manager_data["summary_overall_points"],
-                    "team_name": entry["entry_name"],
-                    "manager_id": entry_id,
-                    # ✅ Get actual event points
-                    "gw_points": manager_data["summary_event_points"],
-                    "overall_rank": overall_rank,
-                    "overall_rank_change": None,
-                    "overall_rank_change_pct": None,
-                    "chip_used": chip_used,
-                    "transfer_penalty": transfer_cost,
-                    "captain_name": captain_name,
-                    "vice_captain_name": vice_captain_name,
-                    "points_on_bench": points_on_bench
-                }
-                new_entries_players.append(player_data)
+                    # Get history data if available
+                    if current_gw and entry_id in history_data_dict:
+                        manager_history = history_data_dict[entry_id]
+                        if manager_history:
+                            chip_used = manager_history.get("chip_used")
+                            transfer_cost = manager_history.get("transfer_cost", 0)
+                            captain_name = manager_history.get("captain_name")
+                            vice_captain_name = manager_history.get(
+                                "vice_captain_name")
+                            points_on_bench = manager_history.get(
+                                "points_on_bench", 0)
 
-            pbar.update(1)
-            page += 1
-            time.sleep(0.1)
+                            # Get overall rank data
+                            current_data = manager_history.get("current")
+                            overall_rank = current_data.get(
+                                "overall_rank") if current_data else None
 
-    # Combine all players
-    all_players = standings_players + new_entries_players
+                    player_data = {
+                        "manager_name": f"{entry['player_first_name']} {entry['player_last_name']}",
+                        "rank": None,  # No ranking yet for new entries
+                        "last_rank": 0,
+                        "rank_change": None,
+                        "pct_rank_change": None,
+                        # ✅ Get actual total points
+                        "total": manager_data["summary_overall_points"],
+                        "team_name": entry["entry_name"],
+                        "manager_id": entry_id,
+                        # ✅ Get actual event points
+                        "gw_points": manager_data["summary_event_points"],
+                        "overall_rank": overall_rank,
+                        "overall_rank_change": None,
+                        "overall_rank_change_pct": None,
+                        "chip_used": chip_used,
+                        "transfer_penalty": transfer_cost,
+                        "captain_name": captain_name,
+                        "vice_captain_name": vice_captain_name,
+                        "points_on_bench": points_on_bench
+                    }
+                    new_entries_players.append(player_data)
 
-    print(f"Found {len(standings_players)} players in standings")
-    print(f"Found {len(new_entries_players)} players in new_entries")
+                pbar.update(1)
+                page += 1
+                time.sleep(0.1)
+
+        # Combine all players
+        all_players = standings_players + new_entries_players
+
+        print(f"Found {len(standings_players)} players in standings")
+        print(f"Found {len(new_entries_players)} players in new_entries")
 
     if not all_players:
         print("No players found for this league.")
@@ -842,9 +868,8 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
         progress_text.text(
             f"Processing data for {len(all_players)} managers...")
 
-    # Apply limit if specified
-    if limit and len(all_players) > limit:
-        all_players = all_players[:limit]
+    # Note: Limit is now applied during fetch, not here
+    print(f"Processing {len(all_players)} managers")
 
     # Create DataFrame from all collected players
     df = pd.DataFrame(all_players)
