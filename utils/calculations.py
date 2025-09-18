@@ -93,9 +93,19 @@ def get_manager_gw_points(manager_id, gw, _session):  # Accept session
                     pick['element'], gw, _session)
                 break  # Only one manager
 
-    # Adjusted points = Raw Points - Transfer Costs - Chip Point Effect
-    adjusted_points = points - transfers_cost - chip_point_effect
-    return adjusted_points
+    # Transfer-adjusted points = Raw Points - Transfer Costs only (no chip deduction)
+    transfer_adjusted_points = points - transfers_cost
+
+    # Net points = Raw Points - Transfer Costs - Chip Point Effect
+    net_points = points - transfers_cost - chip_point_effect
+
+    return {
+        'net_points': net_points,
+        'transfer_adjusted_points': transfer_adjusted_points,
+        'raw_points': points,
+        'transfer_cost': transfers_cost,
+        'chip_effect': chip_point_effect
+    }
 
 
 # --- Process a Single Manager Row ---
@@ -105,10 +115,19 @@ def process_manager(row, gw, _session):  # Accept session
     original_gw_points = row["gw_points"]  # Keep original as fallback
 
     # Pass session to the function that makes the API call
-    adjusted_points = get_manager_gw_points(manager_id, gw, _session)
+    points_data = get_manager_gw_points(manager_id, gw, _session)
 
-    # If fetching/calculation failed, return the original event total (or pd.NA)
-    return adjusted_points if adjusted_points is not None else original_gw_points
+    # If fetching/calculation failed, return fallback values
+    if points_data is not None:
+        return points_data
+    else:
+        return {
+            'net_points': original_gw_points,
+            'transfer_adjusted_points': original_gw_points,
+            'raw_points': original_gw_points,
+            'transfer_cost': 0,
+            'chip_effect': 0
+        }
 
 
 # --- Calculate Adjusted Points for the Entire DataFrame ---
@@ -150,13 +169,22 @@ def calculate_adjusted_points_for_players(df, gw, _session, progress_text=None, 
     # Reconstruct results in the original order using the index
     all_results = [results_dict[index] for index in df.index]
 
-    df["net_points"] = all_results
-    # Ensure the column is numeric, coercing errors to NaN
-    df["net_points"] = pd.to_numeric(
-        df["net_points"], errors='coerce')
+    # Extract data for each column
+    df["net_points"] = [result['net_points'] for result in all_results]
+    df["transfer_adjusted_points"] = [result['transfer_adjusted_points']
+                                      for result in all_results]
+    df["transfer_cost"] = [result['transfer_cost'] for result in all_results]
+    df["chip_effect"] = [result['chip_effect'] for result in all_results]
+
+    # Ensure the columns are numeric, coercing errors to NaN
+    df["net_points"] = pd.to_numeric(df["net_points"], errors='coerce')
+    df["transfer_adjusted_points"] = pd.to_numeric(
+        df["transfer_adjusted_points"], errors='coerce')
+    df["transfer_cost"] = pd.to_numeric(df["transfer_cost"], errors='coerce')
+    df["chip_effect"] = pd.to_numeric(df["chip_effect"], errors='coerce')
 
     if progress_text:
         progress_text.text(
-            "Net points calculation complete.")  # Final update
+            "Points calculation complete.")  # Final update
 
     return df

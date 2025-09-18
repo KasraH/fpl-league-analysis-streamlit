@@ -275,11 +275,14 @@ if st.sidebar.button("Run Analysis"):
         'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
         'rank_change', 'pct_rank_change', 'total'
     ]
-    # Add net points column if calculated
-    if adjusted_points_calculated and 'net_points' in df.columns:
+    # Add calculated points columns if available
+    if adjusted_points_calculated and 'transfer_adjusted_points' in df.columns:
         # Insert after 'gw_points'
         event_total_index = display_cols_main.index('gw_points')
-        display_cols_main.insert(event_total_index + 1, 'net_points')
+        display_cols_main.insert(
+            event_total_index + 1, 'transfer_adjusted_points')
+        if 'net_points' in df.columns:
+            display_cols_main.insert(event_total_index + 2, 'net_points')
 
     display_cols_main = [col for col in display_cols_main if col in df.columns]
     df_display = df[display_cols_main].copy()
@@ -290,6 +293,7 @@ if st.sidebar.button("Run Analysis"):
         'team_name': 'Team',
         'manager_id': 'ID',
         'gw_points': 'GW Points',
+        'transfer_adjusted_points': 'GW Points (Transfer Adj.)',
         'net_points': 'Net Points',
         'captain_name': 'Captain',
         'vice_captain_name': 'Vice Captain',
@@ -369,6 +373,22 @@ if st.sidebar.button("Run Analysis"):
                 'gw_points': 'GW Points'
             })
             display_df("🏆 Top Points (Raw)", top_points_week, current_gw)
+
+        if adjusted_points_calculated and "transfer_adjusted_points" in df.columns:
+            transfer_adj_valid = df["transfer_adjusted_points"].dropna()
+            if not transfer_adj_valid.empty:
+                top_points_transfer_adj = df.loc[df["transfer_adjusted_points"]
+                                                 == df["transfer_adjusted_points"].max()]
+                display_cols = ['manager_name', 'team_name',
+                                'manager_id', 'transfer_adjusted_points']
+                top_points_transfer_adj = top_points_transfer_adj[display_cols].rename(columns={
+                    'manager_id': 'ID',
+                    'manager_name': 'Manager',
+                    'team_name': 'Team',
+                    'transfer_adjusted_points': 'Transfer Adj. Points'
+                })
+                display_df("🏆 Top Points (Transfer Adjusted)",
+                           top_points_transfer_adj, current_gw)
 
         if adjusted_points_calculated and "net_points" in df.columns:
             net_points_valid = df["net_points"].dropna()
@@ -549,7 +569,7 @@ if st.sidebar.button("Run Analysis"):
             avg_overall_rank_top_n = top_n_df['overall_rank'].mean(skipna=True)
 
             # Determine number of columns needed
-            num_cols = 3 if adjusted_points_calculated else 2
+            num_cols = 4 if adjusted_points_calculated else 2
             cols = st.columns(num_cols)
 
             cols[0].metric(label=f"Avg GW Points (Top {actual_n})", value=f"{avg_gw_points_top_n:.2f}" if pd.notna(
@@ -557,11 +577,21 @@ if st.sidebar.button("Run Analysis"):
 
             # --- Conditional Display ---
             if adjusted_points_calculated:
-                avg_net_points_top_n = top_n_df['net_points'].mean(
-                    skipna=True)
-                cols[1].metric(label=f"Avg Net Points (Top {actual_n})", value=f"{avg_net_points_top_n:.2f}" if pd.notna(
-                    avg_net_points_top_n) else "N/A")
-                rank_col_index = 2
+                # Transfer adjusted points
+                if 'transfer_adjusted_points' in top_n_df.columns:
+                    avg_transfer_adj_points_top_n = top_n_df['transfer_adjusted_points'].mean(
+                        skipna=True)
+                    cols[1].metric(label=f"Avg Transfer Adj. (Top {actual_n})", value=f"{avg_transfer_adj_points_top_n:.2f}" if pd.notna(
+                        avg_transfer_adj_points_top_n) else "N/A")
+
+                # Net points (fully adjusted)
+                if 'net_points' in top_n_df.columns:
+                    avg_net_points_top_n = top_n_df['net_points'].mean(
+                        skipna=True)
+                    cols[2].metric(label=f"Avg Net Points (Top {actual_n})", value=f"{avg_net_points_top_n:.2f}" if pd.notna(
+                        avg_net_points_top_n) else "N/A")
+
+                rank_col_index = 3
             else:
                 rank_col_index = 1  # If only 2 columns, rank is the second one
 
