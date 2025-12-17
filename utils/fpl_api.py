@@ -685,7 +685,7 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
     print("Fetching from standings...")
     if limit:
         print(f"Early termination enabled: will stop at {limit} managers")
-    
+
     with tqdm(desc="Standings pages", unit="page") as pbar:
         while has_next_standings:
             if progress_text:
@@ -716,9 +716,10 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
 
     # If we have enough from standings, we can skip new_entries entirely
     if limit and len(standings_players) >= limit:
-        print(f"Got {len(standings_players)} managers from standings (limit: {limit}), skipping new_entries")
+        print(
+            f"Got {len(standings_players)} managers from standings (limit: {limit}), skipping new_entries")
         all_players = standings_players[:limit]
-        
+
         # Skip the new_entries phase entirely
         print(f"Found {len(standings_players)} players in standings")
         print(f"Skipped new_entries phase due to limit")
@@ -741,7 +742,8 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
 
                 # Check if we have enough managers with remaining limit
                 if remaining_limit and len(new_entries_players) >= remaining_limit:
-                    print(f"Reached remaining limit of {remaining_limit} managers from new_entries")
+                    print(
+                        f"Reached remaining limit of {remaining_limit} managers from new_entries")
                     break
 
                 page_data = fetch_league_page(
@@ -815,7 +817,8 @@ def get_league_standings(league_id, current_gw=None, max_workers_overall_rank=10
                         manager_history = history_data_dict[entry_id]
                         if manager_history:
                             chip_used = manager_history.get("chip_used")
-                            transfer_cost = manager_history.get("transfer_cost", 0)
+                            transfer_cost = manager_history.get(
+                                "transfer_cost", 0)
                             captain_name = manager_history.get("captain_name")
                             vice_captain_name = manager_history.get(
                                 "vice_captain_name")

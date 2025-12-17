@@ -38,6 +38,50 @@ def get_player_points(player_id, gw, _session):  # Accept session
     return total_points  # Return sum of all points in the gameweek
 
 
+# --- Calculate Transfer Points Gain/Loss ---
+def get_transfer_points_difference(manager_id, gw, _session):
+    """Calculates the net points gained/lost from transfers in a specific gameweek."""
+    # Get transfers made for this gameweek
+    transfers_url = f"https://fantasy.premierleague.com/api/entry/{manager_id}/transfers/"
+    try:
+        response = _session.get(transfers_url, timeout=5)
+    except requests.exceptions.RequestException as e:
+        print(f"Request error fetching transfers for {manager_id}: {e}")
+        return 0
+
+    if response.status_code != 200:
+        print(
+            f"Error fetching transfers for {manager_id}: {response.status_code}")
+        return 0
+
+    transfers_data = response.json()
+
+    # Filter transfers made for this specific gameweek
+    gw_transfers = [t for t in transfers_data if t.get("event") == gw]
+
+    if not gw_transfers:
+        return 0  # No transfers made in this gameweek
+
+    # Calculate points for transferred-in players
+    points_in = 0
+    for transfer in gw_transfers:
+        player_in_id = transfer.get("element_in")
+        if player_in_id:
+            points_in += get_player_points(player_in_id, gw, _session)
+
+    # Calculate points for transferred-out players (what they would have scored)
+    points_out = 0
+    for transfer in gw_transfers:
+        player_out_id = transfer.get("element_out")
+        if player_out_id:
+            points_out += get_player_points(player_out_id, gw, _session)
+
+    # Net gain/loss from transfers
+    transfer_difference = points_in - points_out
+
+    return transfer_difference
+
+
 # --- Get Manager's GW Points and Chip Info ---
 def get_manager_gw_points(manager_id, gw, _session):  # Accept session
     """Fetches manager's points, chip used, and transfer cost for a gameweek using the provided session."""
@@ -117,8 +161,12 @@ def process_manager(row, gw, _session):  # Accept session
     # Pass session to the function that makes the API call
     points_data = get_manager_gw_points(manager_id, gw, _session)
 
+    # Calculate transfer points difference
+    transfer_gain = get_transfer_points_difference(manager_id, gw, _session)
+
     # If fetching/calculation failed, return fallback values
     if points_data is not None:
+        points_data['transfer_gain'] = transfer_gain
         return points_data
     else:
         return {
@@ -126,7 +174,8 @@ def process_manager(row, gw, _session):  # Accept session
             'transfer_adjusted_points': original_gw_points,
             'raw_points': original_gw_points,
             'transfer_cost': 0,
-            'chip_effect': 0
+            'chip_effect': 0,
+            'transfer_gain': transfer_gain
         }
 
 
@@ -175,6 +224,7 @@ def calculate_adjusted_points_for_players(df, gw, _session, progress_text=None, 
                                       for result in all_results]
     df["transfer_cost"] = [result['transfer_cost'] for result in all_results]
     df["chip_effect"] = [result['chip_effect'] for result in all_results]
+    df["transfer_gain"] = [result['transfer_gain'] for result in all_results]
 
     # Ensure the columns are numeric, coercing errors to NaN
     df["net_points"] = pd.to_numeric(df["net_points"], errors='coerce')
@@ -182,6 +232,7 @@ def calculate_adjusted_points_for_players(df, gw, _session, progress_text=None, 
         df["transfer_adjusted_points"], errors='coerce')
     df["transfer_cost"] = pd.to_numeric(df["transfer_cost"], errors='coerce')
     df["chip_effect"] = pd.to_numeric(df["chip_effect"], errors='coerce')
+    df["transfer_gain"] = pd.to_numeric(df["transfer_gain"], errors='coerce')
 
     if progress_text:
         progress_text.text(
