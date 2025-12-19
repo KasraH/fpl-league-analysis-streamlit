@@ -244,6 +244,11 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
                 # We only have basic overall rank
                 overall_rank = manager_info
 
+        # Extract captain_id from manager_info
+        captain_id = None
+        if manager_info and isinstance(manager_info, dict):
+            captain_id = manager_info.get("captain_id")
+
         player_data = {
             "manager_name": player.get("player_name", "N/A"),
             "rank": current_rank,
@@ -259,7 +264,8 @@ def process_page_data(page_data, current_gw=None, max_workers=10):
             "transfer_penalty": transfer_cost,  # Add transfer cost information
             "captain_name": captain_name,  # Add captain name
             "vice_captain_name": vice_captain_name,  # Add vice captain name
-            "points_on_bench": points_on_bench  # Add points on bench
+            "points_on_bench": points_on_bench,  # Add points on bench
+            "captain_id": captain_id  # Add captain player ID for points calculation
         }
 
         # Add overall rank change data if available

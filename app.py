@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 # Import session from fpl_api and the league fetching function
 from utils.fpl_api import get_league_standings, session
-from utils.calculations import calculate_adjusted_points_for_players
+from utils.calculations import calculate_adjusted_points_for_players, calculate_multi_gw_points
 # Import the new analysis function
 from utils.top_n_analysis import analyze_top_n_managers
 
@@ -56,6 +56,27 @@ if league_id == 2246:
 
 current_gw = st.sidebar.number_input(
     "Current Gameweek:", min_value=1, max_value=38, step=1, value=None, placeholder="Gameweek...")
+
+# --- Multi-Gameweek Analysis Option ---
+multi_gw_enabled = st.sidebar.checkbox(
+    "Multi-Gameweek Analysis",
+    value=False,
+    help="Enable to analyze combined data across multiple gameweeks"
+)
+
+num_gameweeks = 1  # Default to single gameweek
+if multi_gw_enabled and current_gw:
+    num_gameweeks = st.sidebar.number_input(
+        "Number of gameweeks to analyze:",
+        min_value=1,
+        max_value=current_gw,
+        value=min(5, current_gw),
+        step=1,
+        help=f"Analyze the last N gameweeks (GW {max(1, current_gw - num_gameweeks + 1)} to GW {current_gw})"
+    )
+    start_gw = max(1, current_gw - num_gameweeks + 1)
+    st.sidebar.info(f"📊 Analyzing GW {start_gw} to GW {current_gw}")
+
 top_n = st.sidebar.number_input(
     "Number of top managers (N) for detailed analysis:",
     min_value=1, value=10, step=1
@@ -191,10 +212,20 @@ if st.sidebar.button("Run Analysis"):
             progress_text.text(
                 "Calculating adjusted points for all managers...")
             progress_bar.progress(66, text="Calculating adjusted points...")
-            with st.spinner("Calculating adjusted points..."):
-                df = calculate_adjusted_points_for_players(
-                    df, current_gw, _session=session, progress_text=progress_text
-                )
+
+            # Check if multi-gameweek mode is enabled
+            if multi_gw_enabled and num_gameweeks > 1:
+                start_gw = max(1, current_gw - num_gameweeks + 1)
+                with st.spinner(f"Calculating multi-GW points (GW {start_gw}-{current_gw})..."):
+                    df = calculate_multi_gw_points(
+                        df, start_gw, current_gw, _session=session, progress_text=progress_text,
+                        calculate_transfer_gain=True
+                    )
+            else:
+                with st.spinner("Calculating adjusted points..."):
+                    df = calculate_adjusted_points_for_players(
+                        df, current_gw, _session=session, progress_text=progress_text
+                    )
             adjusted_points_calculated = True  # Set flag
         else:
             progress_text.text("Skipping full adjusted points calculation.")
@@ -263,19 +294,36 @@ if st.sidebar.button("Run Analysis"):
 
     # Display Overall Standings (Conditionally include adjusted points)
     st.markdown("---")
+
+    # Create gameweek display string
+    if multi_gw_enabled and num_gameweeks > 1:
+        start_gw = max(1, current_gw - num_gameweeks + 1)
+        gw_display = f"GW {start_gw}-{current_gw}"
+    else:
+        gw_display = f"GW {current_gw}"
+
     # Dynamic title based on division selection
     if league_id == 2246 and selected_division and selected_division != "All Divisions":
-        st.subheader(f"{selected_division} Standings")
+        st.subheader(f"{selected_division} Standings ({gw_display})")
     else:
-        st.subheader("League Standings")
-    # Define base columns
-    display_cols_main = [
-        'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',
-        'captain_name', 'vice_captain_name',
-        'chip_used', 'transfer_penalty', 'transfer_gain', 'points_on_bench',
-        'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
-        'rank_change', 'pct_rank_change', 'total'
-    ]
+        st.subheader(f"League Standings ({gw_display})")
+    # Define base columns - use chips_used for multi-GW mode, chip_used for single GW
+    if multi_gw_enabled and num_gameweeks > 1:
+        display_cols_main = [
+            'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',
+            'captain_name', 'captain_points', 'vice_captain_name',
+            'chips_used', 'transfer_cost', 'transfer_gain', 'points_on_bench',
+            'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
+            'rank_change', 'pct_rank_change', 'total'
+        ]
+    else:
+        display_cols_main = [
+            'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',
+            'captain_name', 'captain_points', 'vice_captain_name',
+            'chip_used', 'transfer_penalty', 'transfer_gain', 'points_on_bench',
+            'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
+            'rank_change', 'pct_rank_change', 'total'
+        ]
     # Add calculated points columns if available
     if adjusted_points_calculated and 'transfer_adjusted_points' in df.columns:
         # Insert after 'gw_points'
@@ -288,27 +336,51 @@ if st.sidebar.button("Run Analysis"):
     display_cols_main = [col for col in display_cols_main if col in df.columns]
     df_display = df[display_cols_main].copy()
 
-    # Create user-friendly column names for display
-    column_renames = {
-        'manager_name': 'Manager',
-        'team_name': 'Team',
-        'manager_id': 'ID',
-        'gw_points': 'GW Points',
-        'transfer_adjusted_points': 'GW Points (Transfer Adj.)',
-        'net_points': 'Net Points',
-        'captain_name': 'Captain',
-        'vice_captain_name': 'Vice Captain',
-        'chip_used': 'Chip Used',
-        'transfer_penalty': 'Transfer Cost',
-        'transfer_gain': 'Transfer Gain/Loss',
-        'points_on_bench': 'Bench Points',
-        'overall_rank': 'Overall Rank',
-        'overall_rank_change': 'OR Change',
-        'overall_rank_change_pct': 'OR Change %',
-        'rank_change': 'Rank Change',
-        'pct_rank_change': 'Rank Change %',
-        'total': 'Total Points'
-    }
+    # Create user-friendly column names for display (adjust based on multi-GW mode)
+    if multi_gw_enabled and num_gameweeks > 1:
+        column_renames = {
+            'manager_name': 'Manager',
+            'team_name': 'Team',
+            'manager_id': 'ID',
+            'gw_points': f'Combined Points ({num_gameweeks} GWs)',
+            'transfer_adjusted_points': 'Transfer Adj. Points',
+            'net_points': 'Net Points',
+            'captain_name': 'Captain',
+            'captain_points': f'Captain Pts ({num_gameweeks} GWs)',
+            'vice_captain_name': 'Vice Captain',
+            'chips_used': 'Chips Used',
+            'transfer_cost': 'Total Transfer Cost',
+            'transfer_gain': 'Total Transfer Gain/Loss',
+            'points_on_bench': 'Bench Points',
+            'overall_rank': 'Overall Rank',
+            'overall_rank_change': 'OR Change',
+            'overall_rank_change_pct': 'OR Change %',
+            'rank_change': 'Rank Change',
+            'pct_rank_change': 'Rank Change %',
+            'total': 'Total Points'
+        }
+    else:
+        column_renames = {
+            'manager_name': 'Manager',
+            'team_name': 'Team',
+            'manager_id': 'ID',
+            'gw_points': 'GW Points',
+            'transfer_adjusted_points': 'GW Points (Transfer Adj.)',
+            'net_points': 'Net Points',
+            'captain_name': 'Captain',
+            'captain_points': 'Captain Pts',
+            'vice_captain_name': 'Vice Captain',
+            'chip_used': 'Chip Used',
+            'transfer_penalty': 'Transfer Cost',
+            'transfer_gain': 'Transfer Gain/Loss',
+            'points_on_bench': 'Bench Points',
+            'overall_rank': 'Overall Rank',
+            'overall_rank_change': 'OR Change',
+            'overall_rank_change_pct': 'OR Change %',
+            'rank_change': 'Rank Change',
+            'pct_rank_change': 'Rank Change %',
+            'total': 'Total Points'
+        }
 
     # Format chip names to be more readable
     if 'chip_used' in df_display.columns:
@@ -361,7 +433,7 @@ if st.sidebar.button("Run Analysis"):
 
     # Display General League Statistics (Conditionally include adjusted stats)
     st.markdown("---")
-    st.subheader(f"General League Statistics (GW {current_gw})")
+    st.subheader(f"General League Statistics ({gw_display})")
     col1, col2 = st.columns(2)
     with col1:
         if "gw_points" in df.columns:
@@ -484,7 +556,7 @@ if st.sidebar.button("Run Analysis"):
 
     # Display Overall Rank Change Statistics
     st.markdown("---")
-    st.subheader(f"Overall Rank Change Statistics (GW {current_gw})")
+    st.subheader(f"Overall Rank Change Statistics ({gw_display})")
     col1, col2 = st.columns(2)
 
     with col1:
@@ -563,7 +635,7 @@ if st.sidebar.button("Run Analysis"):
     # Display Top N Average Stats (Conditionally include adjusted avg)
     st.markdown("---")
     st.subheader(
-        f"Average Stats for Top {actual_n} Managers (GW {current_gw})")
+        f"Average Stats for Top {actual_n} Managers ({gw_display})")
     if actual_n > 0:
         top_n_df = df.nsmallest(actual_n, 'rank')
         if not top_n_df.empty:
