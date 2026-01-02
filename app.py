@@ -311,7 +311,7 @@ if st.sidebar.button("Run Analysis"):
     if multi_gw_enabled and num_gameweeks > 1:
         display_cols_main = [
             'rank', 'manager_name', 'team_name', 'manager_id', 'gw_points',
-            'captain_name', 'captain_points', 'vice_captain_name',
+            'captain_name', 'captain_points', 'captain_points_gained', 'vice_captain_name',
             'chips_used', 'transfer_cost', 'transfer_gain', 'points_on_bench',
             'overall_rank', 'overall_rank_change', 'overall_rank_change_pct',
             'rank_change', 'pct_rank_change', 'total'
@@ -347,6 +347,7 @@ if st.sidebar.button("Run Analysis"):
             'net_points': 'Net Points',
             'captain_name': 'Captain',
             'captain_points': f'Captain Pts ({num_gameweeks} GWs)',
+            'captain_points_gained': f'Captain Gain ({num_gameweeks} GWs)',
             'vice_captain_name': 'Vice Captain',
             'chips_used': 'Chips Used',
             'transfer_cost': 'Total Transfer Cost',

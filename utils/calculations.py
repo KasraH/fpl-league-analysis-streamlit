@@ -297,6 +297,7 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
     total_gw_points = 0
     total_transfer_cost = 0
     total_captain_points = 0
+    total_captain_points_gained = 0
     total_points_on_bench = 0
     chips_used = []
 
@@ -319,13 +320,20 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
             picks_data = get_manager_picks(manager_id, gw, _session)
             if picks_data:
                 picks = picks_data.get('picks', [])
-                # Get captain points
+                # Get captain points and multiplier
                 for pick in picks:
                     if pick.get('is_captain', False):
                         captain_id = pick.get('element')
+                        # Default to 2x for regular captain
+                        multiplier = pick.get('multiplier', 2)
                         if captain_id:
-                            total_captain_points += get_player_points(
+                            captain_base_points = get_player_points(
                                 captain_id, gw, _session)
+                            total_captain_points += captain_base_points
+                            # Total points from captaincy = base_points * multiplier
+                            # Regular captain (2x): total = base_points * 2
+                            # Triple captain (3x): total = base_points * 3
+                            total_captain_points_gained += captain_base_points * multiplier
                         break
 
                 # Get bench points from entry_history
@@ -378,6 +386,7 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
         'chip_effect': 0,
         'transfer_gain': total_transfer_gain,
         'captain_points': total_captain_points,
+        'captain_points_gained': total_captain_points_gained,
         'points_on_bench': total_points_on_bench,
         'chips_used': ', '.join(chips_used) if chips_used else None
     }
@@ -427,6 +436,7 @@ def calculate_multi_gw_points(df, start_gw, end_gw, _session, progress_text=None
                     'chip_effect': 0,
                     'transfer_gain': 0,
                     'captain_points': 0,
+                    'captain_points_gained': 0,
                     'points_on_bench': 0,
                     'chips_used': None
                 }
@@ -447,12 +457,14 @@ def calculate_multi_gw_points(df, start_gw, end_gw, _session, progress_text=None
     df["chip_effect"] = [result['chip_effect'] for result in all_results]
     df["transfer_gain"] = [result['transfer_gain'] for result in all_results]
     df["captain_points"] = [result['captain_points'] for result in all_results]
+    df["captain_points_gained"] = [result['captain_points_gained']
+                                   for result in all_results]
     df["points_on_bench"] = [result['points_on_bench']
                              for result in all_results]
     df["chips_used"] = [result['chips_used'] for result in all_results]
 
     # Ensure numeric columns
-    for col in ["gw_points", "net_points", "transfer_adjusted_points", "transfer_cost", "chip_effect", "transfer_gain", "captain_points", "points_on_bench"]:
+    for col in ["gw_points", "net_points", "transfer_adjusted_points", "transfer_cost", "chip_effect", "transfer_gain", "captain_points", "captain_points_gained", "points_on_bench"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
     if progress_text:
