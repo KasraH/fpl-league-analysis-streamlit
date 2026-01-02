@@ -297,6 +297,7 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
     total_gw_points = 0
     total_transfer_cost = 0
     total_captain_points = 0
+    total_points_on_bench = 0
     chips_used = []
 
     # Use cached history fetch (1 API call, cached for 5 min)
@@ -314,10 +315,11 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
                 total_gw_points += gw_data.get('points', 0)
                 total_transfer_cost += gw_data.get('event_transfers_cost', 0)
 
-            # Get captain points for this GW using cached picks data
+            # Get captain points and bench points for this GW using cached picks data
             picks_data = get_manager_picks(manager_id, gw, _session)
             if picks_data:
                 picks = picks_data.get('picks', [])
+                # Get captain points
                 for pick in picks:
                     if pick.get('is_captain', False):
                         captain_id = pick.get('element')
@@ -325,6 +327,11 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
                             total_captain_points += get_player_points(
                                 captain_id, gw, _session)
                         break
+
+                # Get bench points from entry_history
+                entry_history = picks_data.get('entry_history', {})
+                total_points_on_bench += entry_history.get(
+                    'points_on_bench', 0)
 
         # Get chips used in the gameweek range
         for chip in chips_history:
@@ -371,6 +378,7 @@ def get_multi_gw_manager_data(manager_id, gameweeks, _session, calculate_transfe
         'chip_effect': 0,
         'transfer_gain': total_transfer_gain,
         'captain_points': total_captain_points,
+        'points_on_bench': total_points_on_bench,
         'chips_used': ', '.join(chips_used) if chips_used else None
     }
 
@@ -419,6 +427,7 @@ def calculate_multi_gw_points(df, start_gw, end_gw, _session, progress_text=None
                     'chip_effect': 0,
                     'transfer_gain': 0,
                     'captain_points': 0,
+                    'points_on_bench': 0,
                     'chips_used': None
                 }
 
@@ -438,10 +447,12 @@ def calculate_multi_gw_points(df, start_gw, end_gw, _session, progress_text=None
     df["chip_effect"] = [result['chip_effect'] for result in all_results]
     df["transfer_gain"] = [result['transfer_gain'] for result in all_results]
     df["captain_points"] = [result['captain_points'] for result in all_results]
+    df["points_on_bench"] = [result['points_on_bench']
+                             for result in all_results]
     df["chips_used"] = [result['chips_used'] for result in all_results]
 
     # Ensure numeric columns
-    for col in ["gw_points", "net_points", "transfer_adjusted_points", "transfer_cost", "chip_effect", "transfer_gain", "captain_points"]:
+    for col in ["gw_points", "net_points", "transfer_adjusted_points", "transfer_cost", "chip_effect", "transfer_gain", "captain_points", "points_on_bench"]:
         df[col] = pd.to_numeric(df[col], errors='coerce')
 
     if progress_text:
